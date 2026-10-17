@@ -22,23 +22,23 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   const g = await guard(request, { limiter: researchStartLimiter });
   if ("response" in g) return g.response;
   const { id } = await params;
-  if (!uuidSchema.safeParse(id).success) return jsonError(404, "Not found.");
+  if (!uuidSchema.safeParse(id).success) return jsonError(404, g.t.errors.notFound);
   const { supabase, user, accessToken } = g.auth;
-  if (!getPublicConfig().searchConfigured) return jsonError(503, "No web search provider is configured.");
+  if (!getPublicConfig().searchConfigured) return jsonError(503, g.t.errors.searchNotConfigured);
 
   const { data: jobs } = await supabase
     .from("research_jobs")
     .select("*")
     .eq("research_project_id", id)
     .order("created_at", { ascending: false });
-  if (!jobs?.length) return jsonError(404, "Not found.");
+  if (!jobs?.length) return jsonError(404, g.t.errors.notFound);
   const latest = mapJob(jobs[0]);
-  if (latest.status === "queued" || latest.status === "running") return jsonError(409, "Research is already running.");
+  if (latest.status === "queued" || latest.status === "running") return jsonError(409, g.t.errors.alreadyRunning);
   const confirmed = jobs.map(mapJob).find((j) => j.identity.selected);
-  if (!confirmed) return jsonError(409, "Confirm the person's identity before refreshing.");
+  if (!confirmed) return jsonError(409, g.t.errors.confirmIdentityFirst);
 
-  const quota = await checkResearchQuota(supabase, user.id);
-  if (!quota.allowed) return jsonError(429, quota.reason ?? "Quota exceeded.");
+  const quota = await checkResearchQuota(supabase, user, g.t);
+  if (!quota.allowed) return jsonError(429, quota.reason ?? g.t.errors.tooManyRequests);
 
   const { data: job, error } = await supabase
     .from("research_jobs")
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     })
     .select("id")
     .single();
-  if (error || !job) return jsonError(500, "Could not queue the refresh.");
+  if (error || !job) return jsonError(500, g.t.errors.queueFailed);
   await supabase.from("research_projects").update({ status: "queued" }).eq("id", id);
   await supabase.from("audit_events").insert({ user_id: user.id, event_type: "research.refreshed", metadata: { projectId: id } });
   scheduleResearchJob(job.id, accessToken, user.id);

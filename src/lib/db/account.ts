@@ -16,6 +16,11 @@ export const EXPORT_TABLES = [
   "user_notes",
   "usage_events",
   "audit_events",
+  "billing_customers",
+  "purchases",
+  "credit_ledger",
+  "subscriptions",
+  "report_unlocks",
 ] as const;
 
 /**

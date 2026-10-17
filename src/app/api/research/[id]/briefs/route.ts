@@ -1,13 +1,13 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { guard, jsonError, readJson, validationError } from "@/lib/api";
+import { guard, jsonError, readJson, requireFullReport, validationError } from "@/lib/api";
 import { loadProjectBundle } from "@/lib/db/queries";
 import { createAnalysisModel } from "@/lib/providers/analysis";
 import { generateMeetingBrief } from "@/lib/research/meeting";
 import { checkBriefQuota } from "@/lib/research/quota";
 import { ProviderError } from "@/lib/research/types";
 import { aiActionLimiter } from "@/lib/security/rate-limit";
-import { meetingBriefInputSchema, PURPOSE_LABELS, uuidSchema } from "@/lib/validation/schemas";
+import { meetingBriefInputSchema, uuidSchema } from "@/lib/validation/schemas";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -17,19 +17,21 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   const g = await guard(request, { limiter: aiActionLimiter });
   if ("response" in g) return g.response;
   const { id } = await params;
-  if (!uuidSchema.safeParse(id).success) return jsonError(404, "Not found.");
+  if (!uuidSchema.safeParse(id).success) return jsonError(404, g.t.errors.notFound);
   const parsed = meetingBriefInputSchema.safeParse(await readJson(request));
-  if (!parsed.success) return validationError(parsed.error);
+  if (!parsed.success) return validationError(parsed.error, g.t);
   const model = createAnalysisModel();
-  if (!model) return jsonError(503, "AI analysis is not configured on this server, so meeting briefs cannot be generated.");
+  if (!model) return jsonError(503, g.t.errors.aiNotConfigured);
 
   const { supabase, user } = g.auth;
-  const quota = await checkBriefQuota(supabase);
-  if (!quota.allowed) return jsonError(429, quota.reason ?? "Quota exceeded.");
+  const locked = await requireFullReport(g, id);
+  if (locked) return locked;
+  const quota = await checkBriefQuota(supabase, g.t);
+  if (!quota.allowed) return jsonError(429, quota.reason ?? g.t.errors.tooManyRequests);
   const bundle = await loadProjectBundle(supabase, id);
-  if (!bundle) return jsonError(404, "Not found.");
+  if (!bundle) return jsonError(404, g.t.errors.notFound);
   if (!["completed", "partial"].includes(bundle.project.status) && bundle.claims.length === 0) {
-    return jsonError(409, "Finish the research before generating a meeting brief.");
+    return jsonError(409, g.t.errors.finishResearchFirst);
   }
 
   const overview = bundle.sections.find((s) => s.sectionType === "overview");
@@ -43,20 +45,21 @@ export async function POST(request: NextRequest, { params }: Ctx) {
       brief: parsed.data,
       profileSummary: summary,
       claims: bundle.claims,
+      language: g.locale,
     });
     const { data, error } = await supabase
       .from("meeting_briefs")
       .insert({
         user_id: user.id,
         research_project_id: id,
-        objective: PURPOSE_LABELS[parsed.data.objective],
+        objective: parsed.data.objective,
         context: parsed.data,
         structured_brief: result.brief,
         model_metadata: { provider: "openai", model: result.model, generatedAt: new Date().toISOString() },
       })
       .select("id")
       .single();
-    if (error || !data) return jsonError(500, "Could not save the meeting brief.");
+    if (error || !data) return jsonError(500, g.t.errors.saveFailed);
     await supabase.from("usage_events").insert({
       user_id: user.id,
       kind: "ai_call",
@@ -68,7 +71,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     await supabase.from("audit_events").insert({ user_id: user.id, event_type: "brief.created", metadata: { projectId: id, briefId: data.id } });
     return NextResponse.json({ briefId: data.id }, { status: 201 });
   } catch (err) {
-    const message = err instanceof ProviderError ? err.toUserMessage() : "Brief generation failed.";
+    const message = err instanceof ProviderError ? err.toUserMessage(g.t.engine.provider) : g.t.errors.briefFailed;
     return jsonError(502, message);
   }
 }

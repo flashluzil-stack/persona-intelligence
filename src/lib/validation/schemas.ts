@@ -1,24 +1,31 @@
 import { z } from "zod";
+import en, { type Messages } from "@/i18n/messages/en";
 import { assertPublicUrl } from "@/lib/security/ip";
+
+/*
+ * Validation messages are translation keys ("v:<key>" or "v:tooLong:<max>"),
+ * resolved to the user's language by fieldErrors(). Schemas stay locale-free
+ * so the same rules run in the browser and on the server.
+ */
 
 /** Collapse whitespace and strip control characters from free-text input. */
 function cleanText(value: string): string {
   return value.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").replace(/\s+/g, " ").trim();
 }
 
-const optionalText = (max: number, label: string) =>
+const optionalText = (max: number) =>
   z
     .string()
     .transform(cleanText)
-    .pipe(z.string().max(max, `${label} must be at most ${max} characters`))
+    .pipe(z.string().max(max, `v:tooLong:${max}`))
     .transform((v) => (v ? v : undefined))
     .optional();
 
-const multilineText = (max: number, label: string) =>
+const multilineText = (max: number) =>
   z
     .string()
     .transform((v) => v.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "").trim())
-    .pipe(z.string().max(max, `${label} must be at most ${max} characters`))
+    .pipe(z.string().max(max, `v:tooLong:${max}`))
     .transform((v) => (v ? v : undefined))
     .optional();
 
@@ -37,23 +44,17 @@ export const RESEARCH_PURPOSES = [
 
 export type ResearchPurpose = (typeof RESEARCH_PURPOSES)[number];
 
-export const PURPOSE_LABELS: Record<ResearchPurpose, string> = {
-  job_interview: "Job interview",
-  hiring_interview: "Hiring interview",
-  investor_meeting: "Investor meeting",
-  business_partnership: "Business partnership",
-  sales_meeting: "Sales meeting",
-  client_discovery: "Client discovery",
-  networking: "Networking",
-  negotiation: "Negotiation",
-  collaboration: "Professional collaboration",
-  other: "Other",
-};
+/** English labels (used in AI prompts). The UI uses the localized `t.purposes`. */
+export const PURPOSE_LABELS: Record<ResearchPurpose, string> = en.purposes;
+
+export function isPurpose(value: unknown): value is ResearchPurpose {
+  return typeof value === "string" && (RESEARCH_PURPOSES as readonly string[]).includes(value);
+}
 
 export const publicProfileUrlSchema = z
   .string()
   .transform((v) => v.trim())
-  .pipe(z.string().max(2048, "URL is too long"))
+  .pipe(z.string().max(2048, "v:urlTooLong"))
   .refine(
     (value) => {
       try {
@@ -63,30 +64,30 @@ export const publicProfileUrlSchema = z
         return false;
       }
     },
-    { message: "Enter a public http(s) URL, for example https://example.com/about" },
+    { message: "v:url" },
   );
 
 export const researchInputSchema = z.object({
   fullName: z
-    .string({ error: "Full name is required" })
+    .string({ error: "v:fullNameRequired" })
     .transform(cleanText)
     .pipe(
       z
         .string()
-        .min(2, "Full name is required")
-        .max(120, "Full name must be at most 120 characters")
-        .refine((v) => /\p{L}/u.test(v), "Full name must contain letters"),
+        .min(2, "v:fullNameRequired")
+        .max(120, "v:fullNameTooLong")
+        .refine((v) => /\p{L}/u.test(v), "v:fullNameLetters"),
     ),
-  company: optionalText(160, "Company"),
-  role: optionalText(160, "Job title or profession"),
-  location: optionalText(120, "Location"),
+  company: optionalText(160),
+  role: optionalText(160),
+  location: optionalText(120),
   profileUrl: z
     .string()
     .optional()
     .transform((v) => (v && v.trim() ? v.trim() : undefined))
     .pipe(publicProfileUrlSchema.optional()),
   purpose: z.enum(RESEARCH_PURPOSES).optional(),
-  context: multilineText(1500, "Additional context"),
+  context: multilineText(1500),
   /** Language of the generated report (set from the interface language). */
   locale: z.enum(["en", "he"]).optional(),
 });
@@ -96,13 +97,13 @@ export type ResearchInput = z.infer<typeof researchInputSchema>;
 export const MEETING_OBJECTIVES = RESEARCH_PURPOSES;
 
 export const meetingBriefInputSchema = z.object({
-  objective: z.enum(MEETING_OBJECTIVES, { error: "Choose a meeting objective" }),
-  desiredOutcome: multilineText(1000, "Desired outcome"),
-  offering: multilineText(1000, "What you are offering"),
-  background: multilineText(1500, "Relevant background"),
-  constraints: multilineText(1000, "Known constraints"),
-  questions: multilineText(1500, "Questions you want answered"),
-  durationMinutes: z.coerce.number().int().min(5).max(480).optional(),
+  objective: z.enum(MEETING_OBJECTIVES, { error: "v:objective" }),
+  desiredOutcome: multilineText(1000),
+  offering: multilineText(1000),
+  background: multilineText(1500),
+  constraints: multilineText(1000),
+  questions: multilineText(1500),
+  durationMinutes: z.coerce.number({ error: "v:duration" }).int("v:duration").min(5, "v:duration").max(480, "v:duration").optional(),
 });
 
 export type MeetingBriefInput = z.infer<typeof meetingBriefInputSchema>;
@@ -111,7 +112,7 @@ export const noteInputSchema = z.object({
   content: z
     .string()
     .transform((v) => v.trim())
-    .pipe(z.string().min(1, "Note cannot be empty").max(10_000, "Note must be at most 10,000 characters")),
+    .pipe(z.string().min(1, "v:noteEmpty").max(10_000, "v:tooLong:10000")),
   sectionType: z.string().max(40).optional(),
 });
 
@@ -119,28 +120,37 @@ export const sectionOverrideSchema = z.object({
   text: z
     .string()
     .transform((v) => v.trim())
-    .pipe(z.string().max(10_000, "Edited text must be at most 10,000 characters")),
+    .pipe(z.string().max(10_000, "v:tooLong:10000")),
 });
 
 export const identitySelectionSchema = z.object({
   candidateId: z.string().min(1).max(40),
-  additionalContext: multilineText(500, "Additional context"),
+  additionalContext: multilineText(500),
 });
 
 export const settingsSchema = z.object({
-  displayName: optionalText(120, "Display name"),
+  displayName: optionalText(120),
   retentionDays: z.coerce.number().int().min(7).max(3650),
   confirmBeforeResearch: z.coerce.boolean().optional(),
 });
 
 export const uuidSchema = z.uuid();
 
-/** Flattens Zod issues into a field → message map suitable for forms and API errors. */
-export function fieldErrors(error: z.ZodError): Record<string, string> {
+/** Resolves a validation message key to text in the given language. */
+export function validationMessage(message: string, t: Messages = en): string {
+  if (!message.startsWith("v:")) return t.validation.invalid;
+  const [, key, arg] = message.split(":");
+  if (key === "tooLong") return t.validation.tooLong(Number(arg));
+  const v = t.validation as unknown as Record<string, unknown>;
+  return typeof v[key] === "string" ? (v[key] as string) : t.validation.invalid;
+}
+
+/** Flattens Zod issues into a field → localized message map for forms and API errors. */
+export function fieldErrors(error: z.ZodError, t: Messages = en): Record<string, string> {
   const out: Record<string, string> = {};
   for (const issue of error.issues) {
     const key = issue.path.join(".") || "form";
-    if (!out[key]) out[key] = issue.message;
+    if (!out[key]) out[key] = validationMessage(issue.message, t);
   }
   return out;
 }

@@ -17,7 +17,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   const g = await guard(request, { limiter: mutationLimiter });
   if ("response" in g) return g.response;
   const { id } = await params;
-  if (!uuidSchema.safeParse(id).success) return jsonError(404, "Not found.");
+  if (!uuidSchema.safeParse(id).success) return jsonError(404, g.t.errors.notFound);
   const { supabase, user, accessToken } = g.auth;
   const { data: job } = await supabase
     .from("research_jobs")
@@ -26,11 +26,11 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (!job) return jsonError(404, "Not found.");
+  if (!job) return jsonError(404, g.t.errors.notFound);
   const limits = getResearchLimits();
   const lastBeat = new Date((job.heartbeat_at ?? job.created_at) as string).getTime();
   const stalled = job.status === "running" && Date.now() - lastBeat > Math.min(limits.jobTimeoutMs, 120_000);
-  if (job.status !== "queued" && !stalled) return jsonError(409, "This job is not stalled.");
+  if (job.status !== "queued" && !stalled) return jsonError(409, g.t.errors.notStalled);
   if (stalled) await supabase.from("research_jobs").update({ status: "queued" }).eq("id", job.id);
   scheduleResearchJob(job.id as string, accessToken, user.id);
   return NextResponse.json({ ok: true }, { status: 202 });

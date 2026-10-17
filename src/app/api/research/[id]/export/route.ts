@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { guard, jsonError } from "@/lib/api";
+import { guard, jsonError, requireFullReport } from "@/lib/api";
 import { loadProjectBundle } from "@/lib/db/queries";
 import { bibliographyMarkdown, profileMarkdown } from "@/lib/export/markdown";
 import { uuidSchema } from "@/lib/validation/schemas";
@@ -15,13 +15,15 @@ export async function GET(request: NextRequest, { params }: Ctx) {
   const g = await guard(request);
   if ("response" in g) return g.response;
   const { id } = await params;
-  if (!uuidSchema.safeParse(id).success) return jsonError(404, "Not found.");
+  if (!uuidSchema.safeParse(id).success) return jsonError(404, g.t.errors.notFound);
+  const locked = await requireFullReport(g, id);
+  if (locked) return locked;
   const part = request.nextUrl.searchParams.get("part") ?? "report";
-  if (!["profile", "report", "bibliography"].includes(part)) return jsonError(400, "Unknown export type.");
+  if (!["profile", "report", "bibliography"].includes(part)) return jsonError(400, g.t.errors.unknownExport);
   const includeNotes = request.nextUrl.searchParams.get("includeNotes") === "1";
 
   const bundle = await loadProjectBundle(g.auth.supabase, id);
-  if (!bundle) return jsonError(404, "Not found.");
+  if (!bundle) return jsonError(404, g.t.errors.notFound);
   const personName = bundle.person?.displayName ?? bundle.project.input.fullName;
 
   let body: string;

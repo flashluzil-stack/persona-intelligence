@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { guard, jsonError } from "@/lib/api";
+import { guard, jsonError, requireFullReport } from "@/lib/api";
 import { loadBriefBundle } from "@/lib/db/queries";
 import { briefMarkdown } from "@/lib/export/markdown";
 import { uuidSchema } from "@/lib/validation/schemas";
@@ -10,9 +10,11 @@ export async function GET(request: NextRequest, { params }: Ctx) {
   const g = await guard(request);
   if ("response" in g) return g.response;
   const { id } = await params;
-  if (!uuidSchema.safeParse(id).success) return jsonError(404, "Not found.");
+  if (!uuidSchema.safeParse(id).success) return jsonError(404, g.t.errors.notFound);
   const bundle = await loadBriefBundle(g.auth.supabase, id);
-  if (!bundle) return jsonError(404, "Not found.");
+  if (!bundle) return jsonError(404, g.t.errors.notFound);
+  const locked = await requireFullReport(g, bundle.project.id);
+  if (locked) return locked;
   const body = briefMarkdown({
     personName: bundle.project.input.fullName,
     objective: bundle.brief.objective,

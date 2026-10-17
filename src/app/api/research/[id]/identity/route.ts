@@ -21,9 +21,9 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   const g = await guard(request, { limiter: mutationLimiter });
   if ("response" in g) return g.response;
   const { id } = await params;
-  if (!uuidSchema.safeParse(id).success) return jsonError(404, "Not found.");
+  if (!uuidSchema.safeParse(id).success) return jsonError(404, g.t.errors.notFound);
   const parsed = identitySelectionSchema.safeParse(await readJson(request));
-  if (!parsed.success) return validationError(parsed.error);
+  if (!parsed.success) return validationError(parsed.error, g.t);
   const { supabase, user, accessToken } = g.auth;
 
   const { data } = await supabase
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (!data) return jsonError(409, "This research is not waiting for an identity choice.");
+  if (!data) return jsonError(409, g.t.errors.notWaitingIdentity);
   const job = mapJob(data);
 
   if (parsed.data.candidateId === "none") {
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   }
 
   const candidate = job.identity.candidates?.find((c) => c.id === parsed.data.candidateId);
-  if (!candidate) return jsonError(400, "Unknown candidate.");
+  if (!candidate) return jsonError(400, g.t.errors.unknownCandidate);
   const identity: IdentityState = {
     ...job.identity,
     selected: {
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     },
   };
   const { error } = await supabase.from("research_jobs").update({ status: "queued", identity }).eq("id", job.id).eq("status", "needs_input");
-  if (error) return jsonError(500, "Could not save your selection.");
+  if (error) return jsonError(500, g.t.errors.saveFailed);
   await supabase.from("research_projects").update({ status: "queued" }).eq("id", id);
   await supabase.from("audit_events").insert({ user_id: user.id, event_type: "research.identity_confirmed", metadata: { projectId: id } });
   scheduleResearchJob(job.id, accessToken, user.id);

@@ -12,7 +12,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
   const g = await guard(request);
   if ("response" in g) return g.response;
   const { id } = await params;
-  if (!uuidSchema.safeParse(id).success) return jsonError(404, "Not found.");
+  if (!uuidSchema.safeParse(id).success) return jsonError(404, g.t.errors.notFound);
   const { data, error } = await g.auth.supabase
     .from("research_jobs")
     .select("*")
@@ -20,8 +20,8 @@ export async function GET(request: NextRequest, { params }: Ctx) {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (error) return jsonError(500, "Could not load job status.");
-  if (!data) return jsonError(404, "Not found.");
+  if (error) return jsonError(500, g.t.errors.loadFailed);
+  if (!data) return jsonError(404, g.t.errors.notFound);
   const job = mapJob(data);
   const limits = getResearchLimits();
   const lastBeat = job.heartbeatAt ?? job.createdAt;

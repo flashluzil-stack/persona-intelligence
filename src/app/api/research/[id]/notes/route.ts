@@ -11,12 +11,12 @@ export async function POST(request: NextRequest, { params }: Ctx) {
   const g = await guard(request, { limiter: mutationLimiter });
   if ("response" in g) return g.response;
   const { id } = await params;
-  if (!uuidSchema.safeParse(id).success) return jsonError(404, "Not found.");
+  if (!uuidSchema.safeParse(id).success) return jsonError(404, g.t.errors.notFound);
   const parsed = noteInputSchema.safeParse(await readJson(request));
-  if (!parsed.success) return validationError(parsed.error);
+  if (!parsed.success) return validationError(parsed.error, g.t);
   const { supabase, user } = g.auth;
   const { data: project } = await supabase.from("research_projects").select("id, person_id").eq("id", id).maybeSingle();
-  if (!project) return jsonError(404, "Not found.");
+  if (!project) return jsonError(404, g.t.errors.notFound);
   const { data, error } = await supabase
     .from("user_notes")
     .insert({
@@ -28,6 +28,6 @@ export async function POST(request: NextRequest, { params }: Ctx) {
     })
     .select("id")
     .single();
-  if (error || !data) return jsonError(500, "Could not save the note.");
+  if (error || !data) return jsonError(500, g.t.errors.saveFailed);
   return NextResponse.json({ id: data.id }, { status: 201 });
 }
