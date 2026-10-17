@@ -5,10 +5,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge, Notice } from "@/components/ui/primitives";
+import { useI18n } from "@/i18n/provider";
+import { JOB_STATUS_DISPLAY, localizedJobError } from "@/lib/research/status-display";
 import type { JobError } from "@/lib/research/store";
-import { RESEARCH_STAGES, STAGE_LABELS, type JobStatus, type ResearchStage, type StageLogEntry } from "@/lib/research/types";
+import { RESEARCH_STAGES, type JobStatus, type ResearchStage, type StageLogEntry } from "@/lib/research/types";
 import { apiRequest } from "@/lib/utils/client-api";
-import { JOB_STATUS_DISPLAY } from "@/lib/research/status-display";
 
 interface StatusPayload {
   id: string;
@@ -19,10 +20,8 @@ interface StatusPayload {
   stalled: boolean;
 }
 
-
 function stageState(stage: ResearchStage, progress: StageLogEntry[], current: ResearchStage | null, active: boolean) {
-  const entries = progress.filter((p) => p.stage === stage);
-  const last = entries.at(-1);
+  const last = progress.filter((p) => p.stage === stage).at(-1);
   if (!last) return { icon: Circle, cls: "text-line-strong", message: null as string | null };
   if (last.status === "error") return { icon: XCircle, cls: "text-danger", message: last.message };
   if (last.status === "warning") return { icon: CircleAlert, cls: "text-moderate", message: last.message };
@@ -32,11 +31,10 @@ function stageState(stage: ResearchStage, progress: StageLogEntry[], current: Re
   return { icon: CheckCircle2, cls: "text-high", message: last.message };
 }
 
-/**
- * Live research status. Polls a lightweight endpoint while the job is active;
- * the job itself runs on the server, so the user can leave and come back.
- */
+/** Live research status. Polls a lightweight endpoint while the job is active. */
 export function JobProgress({ projectId, initial }: { projectId: string; initial: StatusPayload }) {
+  const { t } = useI18n();
+  const w = t.workspace;
   const router = useRouter();
   const [status, setStatus] = useState<StatusPayload>(initial);
   const [resumeError, setResumeError] = useState<string | null>(null);
@@ -62,22 +60,19 @@ export function JobProgress({ projectId, initial }: { projectId: string; initial
     };
   }, [active, projectId, router]);
 
-  const display = JOB_STATUS_DISPLAY[status.status];
-  const visibleStages = RESEARCH_STAGES.filter((s) => s !== "meeting_brief");
-
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <Badge tone={display.tone} className="text-[12.5px]">
+        <Badge tone={JOB_STATUS_DISPLAY[status.status].tone} className="text-[12.5px]">
           {active && <Loader2 className="size-3 animate-spin" aria-hidden />}
-          {display.label}
+          {t.jobStatus[status.status]}
         </Badge>
-        {active && <p className="text-sm text-muted">You can leave this page; research continues and results are saved.</p>}
+        {active && <p className="text-sm text-muted">{w.canLeave}</p>}
       </div>
 
       {status.stalled && (
-        <Notice tone="warning" title="This job appears to have stalled">
-          <p>The server may have restarted. Saved results are kept.</p>
+        <Notice tone="warning" title={w.stalledTitle}>
+          <p>{w.stalledBody}</p>
           <Button
             size="sm"
             variant="secondary"
@@ -89,28 +84,28 @@ export function JobProgress({ projectId, initial }: { projectId: string; initial
               else router.refresh();
             }}
           >
-            Resume research
+            {w.resume}
           </Button>
           {resumeError && <p className="mt-1 text-danger">{resumeError}</p>}
         </Notice>
       )}
 
       {status.errorDetails && (
-        <Notice tone={status.status === "partial" ? "warning" : "danger"} title={status.status === "partial" ? "Research stopped early — partial results saved" : "Research failed"} role="alert">
-          {status.errorDetails.message}
+        <Notice tone={status.status === "partial" ? "warning" : "danger"} title={status.status === "partial" ? w.partialTitle : w.failedTitle} role="alert">
+          {localizedJobError(status.errorDetails, t)}
         </Notice>
       )}
 
-      <ol className="divide-y divide-line rounded-md border border-line bg-paper-raised" aria-label="Research stages">
-        {visibleStages.map((stage) => {
+      <ol className="divide-y divide-line rounded-md border border-line bg-paper-raised" aria-label={w.stagesAria}>
+        {RESEARCH_STAGES.filter((s) => s !== "meeting_brief").map((stage) => {
           const s = stageState(stage, status.progress, status.currentStage, active);
           const Icon = s.icon;
           return (
             <li key={stage} className="flex gap-3 px-4 py-2.5">
               <Icon className={`mt-0.5 size-4 shrink-0 ${s.cls}`} aria-hidden />
               <div className="min-w-0">
-                <p className="text-[14px] font-medium text-ink">{STAGE_LABELS[stage]}</p>
-                {s.message && <p className="text-[13px] text-muted">{s.message}</p>}
+                <p className="text-[14px] font-medium text-ink">{t.stages[stage]}</p>
+                {s.message && <p dir="auto" className="text-[13px] text-muted">{s.message}</p>}
               </div>
             </li>
           );

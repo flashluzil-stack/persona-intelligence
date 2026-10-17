@@ -4,36 +4,23 @@ import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Input, Select } from "@/components/ui/field";
 import { Badge, EmptyState } from "@/components/ui/primitives";
+import { useI18n } from "@/i18n/provider";
 import type { ClaimRow } from "@/lib/research/store";
-import { SOURCE_TYPE_LABELS, type SourceRecord, type SourceType } from "@/lib/research/types";
-import { isoDaysAgo } from "@/lib/utils/format";
+import type { SourceRecord, SourceType } from "@/lib/research/types";
+import { isoDaysAgo } from "@/i18n/format";
 import { ClaimCard, ExternalSourceLink, SourceMeta } from "./evidence";
 
-const CATEGORY_LABELS: Record<string, string> = {
-  current_role: "Current role",
-  past_role: "Past role",
-  organization: "Organization",
-  education: "Education",
-  achievement: "Achievement",
-  project: "Project",
-  publication: "Publication",
-  professional_relationship: "Relationship",
-  interest_topic: "Interest",
-  stated_value: "Stated value",
-  public_statement: "Public statement",
-  recent_development: "Recent development",
-  location: "Location",
-  other: "Other",
-};
 
 const matches = (q: string, ...fields: Array<string | null | undefined>) =>
   !q || fields.some((f) => f?.toLowerCase().includes(q.toLowerCase()));
 
 export function ClaimsExplorer({ claims, sources, initialQuery = "" }: { claims: ClaimRow[]; sources: SourceRecord[]; initialQuery?: string }) {
+  const { t } = useI18n();
+  const x = t.explorers;
   const [query, setQuery] = useState(initialQuery);
   const [confidence, setConfidence] = useState("all");
   const [category, setCategory] = useState("all");
-  const sourcesById = useMemo(() => new Map(sources.map((s) => [s.id, s])), [sources]);
+  const sourcesById = useMemo(() => Object.fromEntries(sources.map((s) => [s.id, s])), [sources]);
 
   const filtered = claims.filter(
     (c) =>
@@ -44,34 +31,35 @@ export function ClaimsExplorer({ claims, sources, initialQuery = "" }: { claims:
   const conflictGroups = [...new Set(claims.map((c) => c.conflictGroup).filter(Boolean))] as string[];
 
   if (claims.length === 0) {
-    return <EmptyState title="No verified claims">Claims appear here once sources have been analysed and every claim has been checked against its source text.</EmptyState>;
+    return <EmptyState title={x.noClaimsTitle}>{x.noClaimsBody}</EmptyState>;
   }
 
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
         <label className="relative block">
-          <span className="sr-only">Search claims and evidence</span>
+          <span className="sr-only">{x.searchEvidenceLabel}</span>
           <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search within this profile’s evidence" className="ps-9" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={x.searchEvidence} className="ps-9" />
         </label>
         <label>
-          <span className="sr-only">Filter by confidence</span>
+          <span className="sr-only">{x.filterConfidence}</span>
           <Select value={confidence} onChange={(e) => setConfidence(e.target.value)}>
-            <option value="all">All confidence levels</option>
-            <option value="high">High confidence</option>
-            <option value="moderate">Moderate confidence</option>
-            <option value="low">Low confidence</option>
-            <option value="insufficient">Insufficient evidence</option>
+            <option value="all">{x.allConfidence}</option>
+            {(["high", "moderate", "low", "insufficient"] as const).map((c) => (
+              <option key={c} value={c}>
+                {t.evidence.confidence[c]}
+              </option>
+            ))}
           </Select>
         </label>
         <label>
-          <span className="sr-only">Filter by category</span>
+          <span className="sr-only">{x.filterCategory}</span>
           <Select value={category} onChange={(e) => setCategory(e.target.value)}>
-            <option value="all">All categories</option>
+            <option value="all">{x.allCategories}</option>
             {[...new Set(claims.map((c) => c.category))].map((cat) => (
               <option key={cat} value={cat}>
-                {CATEGORY_LABELS[cat] ?? cat}
+                {x.categories[cat] ?? cat}
               </option>
             ))}
           </Select>
@@ -80,8 +68,8 @@ export function ClaimsExplorer({ claims, sources, initialQuery = "" }: { claims:
 
       {conflictGroups.length > 0 && (
         <div className="rounded-md border border-danger/25 bg-danger-soft/50 px-4 py-3">
-          <p className="text-sm font-medium text-ink">Conflicting information</p>
-          <p className="text-[13px] text-ink-soft">Both sides are shown with their sources and dates. Neither has been silently chosen.</p>
+          <p className="text-sm font-medium text-ink">{x.conflictTitle}</p>
+          <p className="text-[13px] text-ink-soft">{x.conflictBody}</p>
           <div className="mt-3 space-y-3">
             {conflictGroups.map((g) => (
               <div key={g} className="grid gap-2 md:grid-cols-2">
@@ -97,7 +85,7 @@ export function ClaimsExplorer({ claims, sources, initialQuery = "" }: { claims:
       )}
 
       <p className="text-[13px] text-muted" aria-live="polite">
-        Showing {filtered.length} of {claims.length} claims
+        {x.showingClaims(filtered.length, claims.length)}
       </p>
       <div className="space-y-3">
         {filtered.map((c) => (
@@ -108,15 +96,17 @@ export function ClaimsExplorer({ claims, sources, initialQuery = "" }: { claims:
   );
 }
 
-const RETRIEVAL_LABELS: Record<SourceRecord["retrievalStatus"], { label: string; tone: "accent" | "neutral" | "moderate" | "danger" }> = {
-  retrieved: { label: "Full page analysed", tone: "accent" },
-  snippet_only: { label: "Snippet only", tone: "neutral" },
-  not_permitted: { label: "Not permitted", tone: "moderate" },
-  blocked: { label: "Blocked", tone: "danger" },
-  failed: { label: "Retrieval failed", tone: "danger" },
+const RETRIEVAL_TONES: Record<SourceRecord["retrievalStatus"], "accent" | "neutral" | "moderate" | "danger"> = {
+  retrieved: "accent",
+  snippet_only: "neutral",
+  not_permitted: "moderate",
+  blocked: "danger",
+  failed: "danger",
 };
 
 export function SourcesExplorer({ sources, numbers }: { sources: SourceRecord[]; numbers: Record<string, number> }) {
+  const { t } = useI18n();
+  const x = t.explorers;
   const [query, setQuery] = useState("");
   const [type, setType] = useState<"all" | SourceType>("all");
   const [period, setPeriod] = useState("any");
@@ -132,49 +122,49 @@ export function SourcesExplorer({ sources, numbers }: { sources: SourceRecord[];
   );
   const unrelatedCount = sources.filter((s) => s.relevance === "unrelated").length;
 
-  if (sources.length === 0) return <EmptyState title="No sources yet">Sources discovered by the research job will appear here with their original links.</EmptyState>;
+  if (sources.length === 0) return <EmptyState title={x.noSourcesTitle}>{x.noSourcesBody}</EmptyState>;
 
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
         <label className="relative block">
-          <span className="sr-only">Search sources</span>
+          <span className="sr-only">{x.searchSources}</span>
           <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search sources" className="ps-9" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={x.searchSources} className="ps-9" />
         </label>
         <label>
-          <span className="sr-only">Filter by source type</span>
+          <span className="sr-only">{x.filterType}</span>
           <Select value={type} onChange={(e) => setType(e.target.value as "all" | SourceType)}>
-            <option value="all">All source types</option>
-            {[...new Set(sources.map((s) => s.sourceType))].map((t) => (
-              <option key={t} value={t}>
-                {SOURCE_TYPE_LABELS[t]}
+            <option value="all">{x.allTypes}</option>
+            {[...new Set(sources.map((s) => s.sourceType))].map((st) => (
+              <option key={st} value={st}>
+                {t.sourceTypes[st]}
               </option>
             ))}
           </Select>
         </label>
         <label>
-          <span className="sr-only">Filter by publication date</span>
+          <span className="sr-only">{x.filterDate}</span>
           <Select value={period} onChange={(e) => setPeriod(e.target.value)}>
-            <option value="any">Any date</option>
-            <option value="90">Last 3 months</option>
-            <option value="365">Last 12 months</option>
-            <option value="1095">Last 3 years</option>
+            <option value="any">{x.anyDate}</option>
+            <option value="90">{x.last3m}</option>
+            <option value="365">{x.last12m}</option>
+            <option value="1095">{x.last3y}</option>
           </Select>
         </label>
       </div>
       {unrelatedCount > 0 && (
         <label className="flex items-center gap-2 text-[13px] text-muted">
           <input type="checkbox" checked={showUnrelated} onChange={(e) => setShowUnrelated(e.target.checked)} className="accent-[var(--accent)]" />
-          Show {unrelatedCount} source{unrelatedCount === 1 ? "" : "s"} judged to be about a different person
+          {x.showUnrelated(unrelatedCount)}
         </label>
       )}
       <p className="text-[13px] text-muted" aria-live="polite">
-        Showing {filtered.length} of {sources.length} sources{period !== "any" ? " (undated sources hidden by the date filter)" : ""}
+        {x.showingSources(filtered.length, sources.length, period !== "any")}
       </p>
       <ol className="space-y-2.5">
         {filtered.map((s) => {
-          const r = RETRIEVAL_LABELS[s.retrievalStatus];
+          
           return (
             <li key={s.id} id={`source-${s.id}`} className="rounded-md border border-line bg-paper-raised px-4 py-3">
               <div className="flex items-start gap-3">
@@ -184,14 +174,14 @@ export function SourcesExplorer({ sources, numbers }: { sources: SourceRecord[];
                   <div className="mt-0.5">
                     <SourceMeta source={s} />
                   </div>
-                  {s.excerpt && <p className="mt-1.5 line-clamp-3 text-[13.5px] text-ink-soft">{s.excerpt}</p>}
+                  {s.excerpt && <p dir="auto" className="mt-1.5 line-clamp-3 text-[13.5px] text-ink-soft">{s.excerpt}</p>}
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Badge tone={r.tone}>{r.label}</Badge>
-                    {s.relevance === "unrelated" && <Badge tone="danger">Different person</Badge>}
-                    {s.relevance === "possibly_about_person" && <Badge tone="moderate">Possibly about this person</Badge>}
-                    {s.relevance === "unassessed" && <Badge>Relevance not assessed</Badge>}
+                    <Badge tone={RETRIEVAL_TONES[s.retrievalStatus]}>{x.retrieval[s.retrievalStatus]}</Badge>
+                    {s.relevance === "unrelated" && <Badge tone="danger">{x.differentPerson}</Badge>}
+                    {s.relevance === "possibly_about_person" && <Badge tone="moderate">{x.possibly}</Badge>}
+                    {s.relevance === "unassessed" && <Badge>{x.unassessed}</Badge>}
                   </div>
-                  {s.retrievalNote && <p className="mt-1 text-[12.5px] text-muted">{s.retrievalNote}</p>}
+                  {s.retrievalNote && <p dir="auto" className="mt-1 text-[12.5px] text-muted">{s.retrievalNote}</p>}
                 </div>
               </div>
             </li>

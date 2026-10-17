@@ -1,28 +1,33 @@
 import type { Metadata, Viewport } from "next";
+import { I18nProvider } from "@/i18n/provider";
+import { getI18n } from "@/i18n/server";
 import "./globals.css";
 
-// Locale/direction are centralized so Hebrew (dir="rtl") can be added without layout changes.
-const LOCALE = { lang: "en", dir: "ltr" as const };
-
-export const metadata: Metadata = {
-  title: { default: "Persona Intelligence", template: "%s · Persona Intelligence" },
-  description:
-    "Evidence-based, public-source research to prepare for meetings, interviews and partnerships. Every claim links to its source.",
-  robots: { index: true, follow: true },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return {
+    title: { default: t.common.appName, template: `%s · ${t.common.appName}` },
+    description: t.landing.intro,
+    robots: { index: true, follow: true },
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#faf8f4",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+/** Root layout: sets lang/dir from the resolved locale so the whole app flips for Hebrew (RTL). */
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const { locale, dir, t } = await getI18n();
   return (
-    <html lang={LOCALE.lang} dir={LOCALE.dir} className="h-full antialiased">
+    <html lang={locale} dir={dir} className="h-full antialiased">
       <body className="flex min-h-full flex-col bg-paper text-ink">
-        <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-ink focus:px-3 focus:py-2 focus:text-paper">
-          Skip to content
-        </a>
-        {children}
+        <I18nProvider locale={locale}>
+          <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-ink focus:px-3 focus:py-2 focus:text-paper">
+            {t.nav.skip}
+          </a>
+          {children}
+        </I18nProvider>
       </body>
     </html>
   );

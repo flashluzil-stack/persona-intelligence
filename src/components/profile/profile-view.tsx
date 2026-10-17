@@ -1,31 +1,35 @@
+"use client";
+
 import { Search } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { SECTION_LABELS, type ProfileSectionType } from "@/lib/ai/schemas";
+import { QualitySummary } from "@/components/research/quality-summary";
+import { Card, EmptyState, Notice } from "@/components/ui/primitives";
+import { formatDateTime } from "@/i18n/format";
+import { useI18n } from "@/i18n/provider";
+import type { ProfileSectionType } from "@/lib/ai/schemas";
+import { evidenceContext } from "@/lib/research/numbering";
 import type { ClaimRow, QualityReport, SectionRow } from "@/lib/research/store";
 import type { SourceRecord } from "@/lib/research/types";
 import { cn } from "@/lib/utils/cn";
-import { formatDateTime } from "@/lib/utils/format";
-import { Card, EmptyState, Notice } from "@/components/ui/primitives";
-import { QualitySummary } from "@/components/research/quality-summary";
 import { SectionActions } from "./actions";
 import { ClaimsExplorer, SourcesExplorer } from "./explorers";
-import { SectionContent, type EvidenceContext } from "./sections";
+import { SectionContent } from "./sections";
 
-export const PROFILE_TABS: Array<{ id: string; label: string }> = [
-  { id: "overview", label: "Overview" },
-  { id: "background", label: "Background" },
-  { id: "interests", label: "Interests" },
-  { id: "communication", label: "Communication" },
-  { id: "visual_style", label: "Visual style" },
-  { id: "values", label: "Values & ideas" },
-  { id: "relationships", label: "Relationships" },
-  { id: "recent", label: "Recent" },
-  { id: "open_questions", label: "Open questions" },
-  { id: "evidence", label: "Evidence" },
-  { id: "sources", label: "Sources" },
-  { id: "quality", label: "Research quality" },
-];
+export const PROFILE_TAB_IDS = [
+  "overview",
+  "background",
+  "interests",
+  "communication",
+  "visual_style",
+  "values",
+  "relationships",
+  "recent",
+  "open_questions",
+  "evidence",
+  "sources",
+  "quality",
+] as const;
+export type ProfileTabId = (typeof PROFILE_TAB_IDS)[number];
 
 export interface ProfileViewData {
   sections: SectionRow[];
@@ -34,27 +38,27 @@ export interface ProfileViewData {
   quality: QualityReport | null;
 }
 
-export function sourceNumbers(sources: SourceRecord[]): Map<string, number> {
-  const ordered = [...sources.filter((s) => s.relevance !== "unrelated"), ...sources.filter((s) => s.relevance === "unrelated")];
-  return new Map(ordered.map((s, i) => [s.id, i + 1]));
-}
-
 export function ProfileTabs({ base, active, extraTabs = [] }: { base: string; active: string; extraTabs?: Array<{ id: string; label: string }> }) {
-  const tabs = [...extraTabs.filter((t) => t.id === "workspace"), ...PROFILE_TABS, ...extraTabs.filter((t) => t.id !== "workspace")];
+  const { t } = useI18n();
+  const tabs = [
+    ...extraTabs.filter((x) => x.id === "workspace"),
+    ...PROFILE_TAB_IDS.map((id) => ({ id, label: t.tabs[id] })),
+    ...extraTabs.filter((x) => x.id !== "workspace"),
+  ];
   return (
-    <nav aria-label="Profile sections" className="no-print -mx-5 overflow-x-auto border-b border-line px-5">
+    <nav aria-label={t.project.tabsAria} className="no-print -mx-4 overflow-x-auto border-b border-line px-4 sm:-mx-5 sm:px-5">
       <ul className="flex min-w-max gap-1">
-        {tabs.map((t) => (
-          <li key={t.id}>
+        {tabs.map((tab) => (
+          <li key={tab.id}>
             <Link
-              href={`${base}?tab=${t.id}`}
-              aria-current={active === t.id ? "page" : undefined}
+              href={`${base}?tab=${tab.id}`}
+              aria-current={active === tab.id ? "page" : undefined}
               className={cn(
                 "inline-block border-b-2 px-3 py-2.5 text-[14px] transition-colors",
-                active === t.id ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink",
+                active === tab.id ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink",
               )}
             >
-              {t.label}
+              {tab.label}
             </Link>
           </li>
         ))}
@@ -64,28 +68,27 @@ export function ProfileTabs({ base, active, extraTabs = [] }: { base: string; ac
 }
 
 export function ProfileSearchBox({ base, defaultValue }: { base: string; defaultValue?: string }) {
+  const { t } = useI18n();
   return (
-    <form action={base} method="get" role="search" className="no-print relative w-full max-w-xs">
+    <form action={base} method="get" role="search" className="no-print relative w-full sm:max-w-xs">
       <input type="hidden" name="tab" value="evidence" />
       <label htmlFor="profile-search" className="sr-only">
-        Search within profile
+        {t.project.searchProfileLabel}
       </label>
       <Search className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-faint" aria-hidden />
       <input
         id="profile-search"
         name="q"
+        dir="auto"
         defaultValue={defaultValue}
-        placeholder="Search this profile"
+        placeholder={t.project.searchProfile}
         className="h-9 w-full rounded-md border border-line-strong bg-paper-raised ps-9 pe-3 text-sm placeholder:text-faint focus:border-accent focus:outline-none"
       />
     </form>
   );
 }
 
-/**
- * Renders the selected profile tab. Used for live research and the fictional demo.
- * `editable` enables section editing/regeneration for live projects.
- */
+/** Renders one tab of a FULL report (only ever given data the viewer is entitled to). */
 export function ProfileTabContent({
   tab,
   data,
@@ -96,19 +99,15 @@ export function ProfileTabContent({
   data: ProfileViewData;
   query?: string;
   editable?: { projectId: string; aiConfigured: boolean } | null;
-}): ReactNode {
-  const numbers = sourceNumbers(data.sources);
-  const ctx: EvidenceContext = {
-    claimsById: new Map(data.claims.map((c) => [c.id, c])),
-    sourcesById: new Map(data.sources.map((s) => [s.id, s])),
-    numbers,
-  };
+}) {
+  const { t, locale } = useI18n();
+  const ctx = evidenceContext(data.claims, data.sources);
 
   if (tab === "evidence") {
     return (
       <Card className="p-5 sm:p-6">
-        <h2 className="mb-1 text-xl font-semibold">Evidence register</h2>
-        <p className="mb-5 text-sm text-muted">Every claim was checked against the verbatim text of its cited sources. Confidence labels are assigned from the evidence, not by the AI.</p>
+        <h2 className="mb-1 text-xl font-semibold">{t.sections.evidenceTitle}</h2>
+        <p className="mb-5 text-sm text-muted">{t.sections.evidenceBody}</p>
         <ClaimsExplorer claims={data.claims} sources={data.sources} initialQuery={query} />
       </Card>
     );
@@ -116,53 +115,40 @@ export function ProfileTabContent({
   if (tab === "sources") {
     return (
       <Card className="p-5 sm:p-6">
-        <h2 className="mb-1 text-xl font-semibold">Sources</h2>
-        <p className="mb-5 text-sm text-muted">Original links, publication and access dates, and whether each page could be retrieved.</p>
-        <SourcesExplorer sources={data.sources} numbers={Object.fromEntries(numbers)} />
+        <h2 className="mb-1 text-xl font-semibold">{t.sections.sourcesTitle}</h2>
+        <p className="mb-5 text-sm text-muted">{t.sections.sourcesBody}</p>
+        <SourcesExplorer sources={data.sources} numbers={ctx.numbers} />
       </Card>
     );
   }
   if (tab === "quality") {
     return (
       <Card className="p-5 sm:p-6">
-        <h2 className="mb-4 text-xl font-semibold">Research quality</h2>
-        {data.quality ? <QualitySummary quality={data.quality} /> : <EmptyState title="No quality report yet">A report is produced when a research run finishes.</EmptyState>}
+        <h2 className="mb-4 text-xl font-semibold">{t.sections.qualityTitle}</h2>
+        {data.quality ? <QualitySummary quality={data.quality} /> : <EmptyState title={t.sections.noQualityTitle}>{t.sections.noQualityBody}</EmptyState>}
       </Card>
     );
   }
 
   const section = data.sections.find((s) => s.sectionType === tab);
-  const label = SECTION_LABELS[tab as ProfileSectionType] ?? "Section";
+  const label = t.sectionLabels[tab as ProfileSectionType] ?? tab;
   if (!section) {
-    return (
-      <EmptyState title={`${label}: not generated`}>
-        {data.claims.length === 0
-          ? "This section needs AI analysis of the collected sources. It has not been generated for this research."
-          : "This section has not been generated yet."}
-      </EmptyState>
-    );
+    return <EmptyState title={t.sections.notGenerated(label)}>{data.claims.length === 0 ? t.sections.needsAi : t.sections.notGeneratedYet}</EmptyState>;
   }
   const summary = (section.content as { summary?: string }).summary ?? "";
+  const model = typeof section.modelMetadata.model === "string" ? ` · ${section.modelMetadata.model}` : "";
   return (
     <Card className="p-5 sm:p-6">
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold">{label}</h2>
-          <p className="mt-0.5 text-[12.5px] text-muted">
-            Generated {formatDateTime(section.generatedAt)} · version {section.version}
-            {typeof section.modelMetadata.model === "string" ? ` · ${section.modelMetadata.model}` : ""}
-          </p>
-        </div>
+      <div className="mb-5">
+        <h2 className="text-xl font-semibold">{label}</h2>
+        <p className="mt-0.5 text-[12.5px] text-muted">
+          {t.sections.generatedMeta(formatDateTime(section.generatedAt, locale), section.version)}
+          <bdi>{model}</bdi>
+        </p>
       </div>
       {editable && section.sectionType !== "visual_style" && section.sectionType !== "open_questions" && (
         <div className="mb-5">
-          <SectionActions
-            projectId={editable.projectId}
-            sectionType={section.sectionType}
-            currentOverride={section.userOverride}
-            generatedSummary={summary}
-            canRegenerate={editable.aiConfigured}
-          />
+          <SectionActions projectId={editable.projectId} sectionType={section.sectionType} currentOverride={section.userOverride} generatedSummary={summary} canRegenerate={editable.aiConfigured} />
         </div>
       )}
       <SectionContent section={section} ctx={ctx} />
@@ -171,10 +157,10 @@ export function ProfileTabContent({
 }
 
 export function ResearchDisclaimer() {
+  const { t } = useI18n();
   return (
     <Notice tone="info" className="no-print">
-      Compiled from public sources only. It may be incomplete or out of date and is not a background check. Verify important facts yourself, and never use it for employment,
-      credit, housing or insurance eligibility decisions.
+      {t.project.disclaimer}
     </Notice>
   );
 }

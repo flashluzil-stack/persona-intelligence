@@ -1,14 +1,12 @@
+"use client";
+
 import { Badge } from "@/components/ui/primitives";
+import { formatNumber } from "@/i18n/format";
+import { useI18n } from "@/i18n/provider";
 import type { QualityReport } from "@/lib/research/store";
-import { SOURCE_TYPE_LABELS, type SourceType } from "@/lib/research/types";
+import type { SourceType } from "@/lib/research/types";
 
-const PROVIDER_LABELS: Record<string, string> = {
-  web_search: "Web search",
-  ai_analysis: "AI analysis",
-  page_retrieval: "Page retrieval",
-};
-
-function Stat({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
+function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-md border border-line px-3 py-2.5">
       <p className="font-display text-2xl text-ink">{value}</p>
@@ -18,65 +16,68 @@ function Stat({ label, value, hint }: { label: string; value: number | string; h
   );
 }
 
-/** Research quality: counts and plain-language limitations. Deliberately no single score. */
+/** Research quality: counts and plain-language limitations — deliberately no single score. */
 export function QualitySummary({ quality }: { quality: QualityReport }) {
+  const { t, locale } = useI18n();
+  const q = t.quality;
+  const n = (v: number) => formatNumber(v, locale);
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Stat label="Sources found" value={quality.sourcesFound} hint={`${quality.sourcesUnrelated} about other people`} />
-        <Stat label="Full pages analysed" value={quality.sourcesRetrieved} hint={`${quality.sourcesSnippetOnly} snippet only`} />
-        <Stat label="Sources cited" value={quality.sourcesAnalysed} />
-        <Stat label="Verified claims" value={quality.claimsExtracted} hint={`${quality.claimsRejected} discarded`} />
+        <Stat label={q.sourcesFound} value={n(quality.sourcesFound)} hint={q.otherPeople(quality.sourcesUnrelated)} />
+        <Stat label={q.fullPages} value={n(quality.sourcesRetrieved)} hint={q.snippetOnly(quality.sourcesSnippetOnly)} />
+        <Stat label={q.sourcesCited} value={n(quality.sourcesAnalysed)} />
+        <Stat label={q.verifiedClaims} value={n(quality.claimsExtracted)} hint={q.discarded(quality.claimsRejected)} />
       </div>
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Claims by confidence</p>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{q.byConfidence}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge tone="high">High · {quality.claimsByConfidence.high}</Badge>
-            <Badge tone="moderate">Moderate · {quality.claimsByConfidence.moderate}</Badge>
-            <Badge tone="low">Low · {quality.claimsByConfidence.low}</Badge>
-            <Badge tone="insufficient">Insufficient · {quality.claimsByConfidence.insufficient}</Badge>
+            <Badge tone="high">{q.high} · {quality.claimsByConfidence.high}</Badge>
+            <Badge tone="moderate">{q.moderate} · {quality.claimsByConfidence.moderate}</Badge>
+            <Badge tone="low">{q.low} · {quality.claimsByConfidence.low}</Badge>
+            <Badge tone="insufficient">{q.insufficient} · {quality.claimsByConfidence.insufficient}</Badge>
           </div>
         </div>
         <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Source categories</p>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{q.categories}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {Object.entries(quality.sourceCategories).map(([type, n]) => (
+            {Object.entries(quality.sourceCategories).map(([type, count]) => (
               <Badge key={type}>
-                {SOURCE_TYPE_LABELS[type as SourceType] ?? type} · {n}
+                {t.sourceTypes[type as SourceType] ?? type} · {count}
               </Badge>
             ))}
-            {Object.keys(quality.sourceCategories).length === 0 && <span className="text-[13px] text-muted">None</span>}
+            {Object.keys(quality.sourceCategories).length === 0 && <span className="text-[13px] text-muted">{t.common.none}</span>}
           </div>
         </div>
       </div>
       {quality.conflicts.length > 0 && (
         <div>
-          <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Conflicting claims</p>
+          <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{q.conflicting}</p>
           <ul className="mt-1.5 list-disc space-y-1 ps-5 text-[14px] text-ink">
             {quality.conflicts.map((c) => (
-              <li key={c.key}>{c.description}</li>
+              <li key={c.key} dir="auto">{c.description}</li>
             ))}
           </ul>
         </div>
       )}
       {quality.insufficientSections.length > 0 && (
         <p className="text-[14px] text-ink-soft">
-          <span className="font-medium text-ink">Insufficient evidence for: </span>
+          <span className="font-medium text-ink">{q.insufficientFor}</span>
           {quality.insufficientSections.join(", ")}.
         </p>
       )}
       {quality.unavailableProviders.length > 0 && (
         <p className="text-[14px] text-ink-soft">
-          <span className="font-medium text-ink">Unavailable providers: </span>
-          {quality.unavailableProviders.map((p) => PROVIDER_LABELS[p] ?? p).join(", ")}.
+          <span className="font-medium text-ink">{q.unavailable}</span>
+          {quality.unavailableProviders.map((p) => q.providers[p as keyof typeof q.providers] ?? p).join(", ")}.
         </p>
       )}
       <div>
-        <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">Limitations</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{q.limitations}</p>
         <ul className="mt-1.5 list-disc space-y-1 ps-5 text-[14px] text-ink-soft">
           {quality.limitations.map((l, i) => (
-            <li key={i}>{l}</li>
+            <li key={i} dir="auto">{l}</li>
           ))}
         </ul>
       </div>
