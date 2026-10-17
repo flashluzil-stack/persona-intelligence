@@ -8,6 +8,10 @@ import { uuidSchema } from "@/lib/validation/schemas";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+// Research continues in after() for the life of this function; allow up to 5 minutes
+// (Vercel Fluid Compute limit on all plans). Keep RESEARCH_JOB_TIMEOUT_MS below this.
+export const maxDuration = 300;
+
 /** Restarts a queued or stalled job (e.g. if the server was recycled mid-run). */
 export async function POST(request: NextRequest, { params }: Ctx) {
   const g = await guard(request, { limiter: mutationLimiter });

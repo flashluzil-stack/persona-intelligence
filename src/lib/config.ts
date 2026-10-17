@@ -132,7 +132,9 @@ export function getPublicConfig(): PublicConfig {
 
 export function getAppUrl(): string {
   const env = process.env;
-  return (env.APP_URL || env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  // On Vercel, fall back to the project's production domain so auth email links work without extra config.
+  const vercel = env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined;
+  return (env.APP_URL || env.NEXT_PUBLIC_APP_URL || vercel || "http://localhost:3000").replace(/\/$/, "");
 }
 
 export const USER_AGENT =

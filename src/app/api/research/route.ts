@@ -7,6 +7,10 @@ import { scheduleResearchJob } from "@/lib/research/runner";
 import { researchStartLimiter } from "@/lib/security/rate-limit";
 import { PURPOSE_LABELS, researchInputSchema } from "@/lib/validation/schemas";
 
+// Research continues in after() for the life of this function; allow up to 5 minutes
+// (Vercel Fluid Compute limit on all plans). Keep RESEARCH_JOB_TIMEOUT_MS below this.
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
   const g = await guard(request, { limiter: researchStartLimiter });
   if ("response" in g) return g.response;

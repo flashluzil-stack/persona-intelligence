@@ -9,6 +9,10 @@ import { identitySelectionSchema, uuidSchema } from "@/lib/validation/schemas";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+// Research continues in after() for the life of this function; allow up to 5 minutes
+// (Vercel Fluid Compute limit on all plans). Keep RESEARCH_JOB_TIMEOUT_MS below this.
+export const maxDuration = 300;
+
 /**
  * Records the user's choice among identity candidates and resumes the job.
  * candidateId "none" stops the job: no candidate is merged by default.

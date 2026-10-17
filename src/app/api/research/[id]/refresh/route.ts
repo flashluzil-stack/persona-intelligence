@@ -10,6 +10,10 @@ import { uuidSchema } from "@/lib/validation/schemas";
 
 type Ctx = { params: Promise<{ id: string }> };
 
+// Research continues in after() for the life of this function; allow up to 5 minutes
+// (Vercel Fluid Compute limit on all plans). Keep RESEARCH_JOB_TIMEOUT_MS below this.
+export const maxDuration = 300;
+
 /**
  * Starts a refresh run for an existing project. The previously confirmed
  * identity is reused; already-retrieved pages are not fetched again.

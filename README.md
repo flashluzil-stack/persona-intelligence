@@ -110,6 +110,8 @@ Jobs run after the HTTP response (`after()`), save progress after every stage, a
 
 ## Deployment
 
+**Step-by-step phone-friendly guide: [DEPLOY.md](DEPLOY.md)** (Vercel + Supabase via the Vercel Marketplace; database tables created automatically at build time when `PERSONA_MIGRATE_ON_BUILD=true`).
+
 Any Node.js 20+ host that supports Next.js 16 works (Vercel, Fly, Render, a container).
 
 1. Set the environment variables in the host, apply the migration to Supabase, and configure the auth URLs.
