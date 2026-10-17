@@ -1,7 +1,8 @@
 import { SECTION_LABELS, type ProfileSectionType } from "@/lib/ai/schemas";
 import type { ConfidenceLabel } from "./evidence";
 import type { ClaimRow, QualityReport } from "./store";
-import type { SourceRecord } from "./types";
+import en from "@/i18n/messages/en";
+import type { EngineMessages, SourceRecord } from "./types";
 
 /**
  * Research quality summary. Deliberately a set of counts and plain-language
@@ -18,7 +19,11 @@ export function buildQualityReport(args: {
   warnings: string[];
   unavailableProviders: string[];
   profileGenerated: boolean;
+  messages?: EngineMessages;
+  sectionLabels?: Record<string, string>;
 }): QualityReport {
+  const m = (args.messages ?? en.engine).quality;
+  const labels = args.sectionLabels ?? SECTION_LABELS;
   const relevant = args.sources.filter((s) => s.relevance !== "unrelated");
   const count = (status: SourceRecord["retrievalStatus"]) => relevant.filter((s) => s.retrievalStatus === status).length;
   const sourceCategories: Record<string, number> = {};
@@ -30,25 +35,23 @@ export function buildQualityReport(args: {
   const retrieved = count("retrieved");
   const limitations = [...args.warnings];
   if (relevant.length > 0 && retrieved === 0) {
-    limitations.push("No full pages could be retrieved; findings rely on search snippets only.");
+    limitations.push(m.snippetsOnly);
   } else if (relevant.length > 0 && retrieved / relevant.length < 0.3) {
-    limitations.push("Most sources were analysed from search snippets only.");
+    limitations.push(m.mostlySnippets);
   }
   if (!sourceCategories.personal_website && !sourceCategories.company_website) {
-    limitations.push("No primary source (the person's own or their organization's website) was found.");
+    limitations.push(m.noPrimary);
   }
   if (args.claims.length > 0 && claimsByConfidence.high === 0) {
-    limitations.push("No claim reached high confidence; treat findings as leads to verify.");
+    limitations.push(m.noHigh);
   }
   if (args.claimsRejected > 0) {
-    limitations.push(`${args.claimsRejected} proposed claim${args.claimsRejected === 1 ? " was" : "s were"} discarded because the supporting text could not be found in the cited source.`);
+    limitations.push(m.rejected(args.claimsRejected));
   }
   if (args.queriesFailed > 0) {
-    limitations.push(`${args.queriesFailed} search quer${args.queriesFailed === 1 ? "y" : "ies"} failed.`);
+    limitations.push(m.queriesFailed(args.queriesFailed));
   }
-  limitations.push(
-    "Coverage is limited to what the configured search provider returns. Social networks and login-protected pages are not searched directly, and completeness is not guaranteed.",
-  );
+  limitations.push(m.coverage);
 
   return {
     sourcesFound: args.sources.length,
@@ -65,7 +68,7 @@ export function buildQualityReport(args: {
     claimsRejected: args.claimsRejected,
     claimsByConfidence,
     conflicts: args.conflicts,
-    insufficientSections: args.insufficientSections.map((s) => SECTION_LABELS[s as ProfileSectionType] ?? s),
+    insufficientSections: args.insufficientSections.map((s) => labels[s as ProfileSectionType] ?? s),
     limitations,
     unavailableProviders: args.unavailableProviders,
     reliesOnSnippetsOnly: relevant.length > 0 && retrieved === 0,

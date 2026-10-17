@@ -1,5 +1,5 @@
 import type { StoredMeetingBrief } from "@/lib/research/meeting";
-import { VISUAL_STYLE_UNAVAILABLE } from "@/lib/research/profile";
+import { visualStyleUnavailable } from "@/lib/research/profile";
 import type { ClaimRow, EvidenceRow, QualityReport, SectionRow } from "@/lib/research/store";
 import type { SourceRecord } from "@/lib/research/types";
 
@@ -238,7 +238,7 @@ export const DEMO_SECTIONS: SectionRow[] = [
     ],
     limitations: ["Based on two pieces of public content; tone may differ in private meetings."],
   }),
-  section("visual_style", { ...VISUAL_STYLE_UNAVAILABLE }),
+  section("visual_style", { ...visualStyleUnavailable() }),
   section("values", {
     summary: "She explicitly frames accessibility and transparency as product principles.",
     items: [

@@ -87,6 +87,8 @@ export const researchInputSchema = z.object({
     .pipe(publicProfileUrlSchema.optional()),
   purpose: z.enum(RESEARCH_PURPOSES).optional(),
   context: multilineText(1500, "Additional context"),
+  /** Language of the generated report (set from the interface language). */
+  locale: z.enum(["en", "he"]).optional(),
 });
 
 export type ResearchInput = z.infer<typeof researchInputSchema>;

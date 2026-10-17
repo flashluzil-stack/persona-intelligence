@@ -31,7 +31,7 @@ export async function reapStaleJobs(db: SupabaseClient): Promise<void> {
       .update({
         status,
         completed_at: new Date().toISOString(),
-        error_details: { stage: "save_and_quality", code: "stalled", message: "The research worker stopped responding. Saved results are preserved; you can refresh the research." },
+        error_details: { stage: "save_and_quality", code: "stalled", message: "The research worker stopped responding. Saved results are preserved; you can refresh the research." /* localized in the UI by code */ },
       })
       .eq("id", job.id)
       .eq("status", "running");

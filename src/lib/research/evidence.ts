@@ -1,5 +1,6 @@
 import type { EvidenceType } from "@/lib/ai/schemas";
-import type { SourceCredibility } from "./types";
+import en from "@/i18n/messages/en";
+import type { EngineMessages, SourceCredibility } from "./types";
 
 /**
  * Deterministic evidence handling. The AI proposes claims and excerpts; this
@@ -73,6 +74,7 @@ export function assessConfidence(
   evidenceType: EvidenceType,
   evidence: EvidenceForAssessment[],
   inConflict: boolean,
+  m: EngineMessages["confidence"] = en.engine.confidence,
 ): ConfidenceAssessment {
   const supporting = evidence.filter((e) => e.relationship === "supports");
   const strong = supporting.filter((e) => e.strength !== "indirect");
@@ -89,22 +91,20 @@ export function assessConfidence(
         ? "single_source"
         : "unverified";
 
-  const sourcesPhrase = `${domains.size} independent source${domains.size === 1 ? "" : "s"}`;
-
   if (evidenceType === "hypothesis" || evidenceType === "unknown") {
-    return { label: "insufficient", verification: "unverified", rationale: "Unverified hypothesis; not established by the available sources." };
+    return { label: "insufficient", verification: "unverified", rationale: m.hypothesis };
   }
   if (supporting.length === 0) {
-    return { label: "insufficient", verification, rationale: "No source directly supports this statement." };
+    return { label: "insufficient", verification, rationale: m.noSupport };
   }
   if (strong.length === 0) {
-    return { label: "low", verification, rationale: "Sources only indirectly support this statement." };
+    return { label: "low", verification, rationale: m.indirect };
   }
   if (evidenceType === "interpretation") {
     return {
       label: "low",
       verification,
-      rationale: `Analytical interpretation drawn from ${sourcesPhrase}; not a documented fact.`,
+      rationale: m.interpretation(domains.size),
     };
   }
 
@@ -112,24 +112,24 @@ export function assessConfidence(
   let rationale: string;
   if (domains.size >= 2 && (hasPrimaryDirect || hasEstablishedDirect)) {
     label = "high";
-    rationale = `Directly supported by ${sourcesPhrase}, including a ${hasPrimaryDirect ? "primary source" : "established publication"}.`;
+    rationale = m.highCorroborated(domains.size, hasPrimaryDirect);
   } else if (evidenceType === "self_statement" && hasPrimaryDirect) {
     label = "high";
-    rationale = "Stated by the person in a primary source. High confidence that they said it; it reflects their own account.";
+    rationale = m.selfStatement;
   } else if (hasPrimaryDirect || hasEstablishedDirect) {
     label = "moderate";
-    rationale = `Supported by a single ${hasPrimaryDirect ? "primary source" : "established publication"}; not independently corroborated.`;
+    rationale = m.singleStrong(hasPrimaryDirect);
   } else if (domains.size >= 2) {
     label = "moderate";
-    rationale = `Supported by ${sourcesPhrase}, none of them primary.`;
+    rationale = m.multipleSecondary(domains.size);
   } else {
     label = "low";
-    rationale = "Supported by a single secondary or user-generated source.";
+    rationale = m.singleWeak;
   }
 
   if (contradicted) {
     if (label === "high") label = "moderate";
-    rationale += " Other sources conflict with this; see conflicting claims.";
+    rationale += m.conflicting;
   }
   return { label, verification, rationale };
 }

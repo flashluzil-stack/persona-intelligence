@@ -1,3 +1,7 @@
+import en, { type Messages } from "@/i18n/messages/en";
+
+export type EngineMessages = Messages["engine"];
+
 /**
  * Shared domain types for the research engine. Provider implementations,
  * the pipeline, persistence and the UI all speak these shapes.
@@ -143,22 +147,17 @@ export class ProviderError extends Error {
   }
 
   /** Message safe to show users and store; never includes keys or raw bodies. */
-  toUserMessage(): string {
+  toUserMessage(m: EngineMessages["provider"] = en.engine.provider): string {
     switch (this.code) {
       case "not_configured":
-        return `${this.provider} is not configured.`;
       case "unauthorized":
-        return `${this.provider} rejected the configured credentials.`;
       case "rate_limited":
-        return `${this.provider} is rate limiting requests. Try again shortly.`;
       case "quota_exceeded":
-        return `${this.provider} usage quota is exhausted.`;
       case "timeout":
-        return `${this.provider} did not respond in time.`;
       case "network":
-        return `${this.provider} could not be reached.`;
+        return m[this.code](this.provider);
       default:
-        return `${this.provider}: ${this.message}`;
+        return m.other(this.provider);
     }
   }
 }

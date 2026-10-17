@@ -110,6 +110,8 @@ export interface PublicConfig {
   analysisModel: string | null;
   pageRetrievalEnabled: boolean;
   imageAnalysisEnabled: boolean;
+  paymentsConfigured: boolean;
+  paywallEnforced: boolean;
 }
 
 export function getPublicConfig(): PublicConfig {
@@ -127,6 +129,8 @@ export function getPublicConfig(): PublicConfig {
     pageRetrievalEnabled: process.env.RESEARCH_DISABLE_PAGE_FETCH !== "true",
     // Image analysis is not implemented in this milestone; see README.
     imageAnalysisEnabled: false,
+    paymentsConfigured: getPaddleConfig() !== null && getServiceRoleKey() !== null,
+    paywallEnforced: getAccessConfig().paywallEnforced,
   };
 }
 
@@ -139,3 +143,76 @@ export function getAppUrl(): string {
 
 export const USER_AGENT =
   "PersonaIntelligenceBot/0.1 (+public-source research; respects robots.txt)";
+
+// ---------------------------------------------------------------------------
+// Access model, billing and anti-abuse configuration
+// ---------------------------------------------------------------------------
+
+export interface PaddleConfig {
+  provider: "paddle";
+  environment: "sandbox" | "production";
+  apiKey: string;
+  clientToken: string;
+  webhookSecret: string;
+}
+
+/** Paddle Billing credentials. All three are required for purchases to work. */
+export function getPaddleConfig(): PaddleConfig | null {
+  const env = process.env;
+  if (!env.PADDLE_API_KEY || !env.PADDLE_CLIENT_TOKEN || !env.PADDLE_WEBHOOK_SECRET) return null;
+  return {
+    provider: "paddle",
+    environment: env.PADDLE_ENVIRONMENT === "production" ? "production" : "sandbox",
+    apiKey: env.PADDLE_API_KEY,
+    clientToken: env.PADDLE_CLIENT_TOKEN,
+    webhookSecret: env.PADDLE_WEBHOOK_SECRET,
+  };
+}
+
+/** Service-role key: used ONLY by billing webhooks, entitlement changes and guest-account transfers. */
+export function getServiceRoleKey(): string | null {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || null;
+}
+
+export interface AccessConfig {
+  /** Whether full reports require an entitlement. */
+  paywallEnforced: boolean;
+  /** Locked previews a guest (anonymous) session may create in total. */
+  freePreviewsGuest: number;
+  /** Locked previews an account may hold from the last 30 days. */
+  freePreviewsPer30Days: number;
+  /** Global cap on research runs per day by non-subscribers (cost protection). */
+  freeResearchGlobalDaily: number;
+  /** Credits consumed by unlocking one report. */
+  creditsPerReport: number;
+  /** Verified findings shown in a free preview. */
+  previewFindings: number;
+  /** Overview key points shown in a free preview. */
+  previewKeyPoints: number;
+  /** Research runs per day for subscribers. */
+  subscriberDailyResearch: number;
+  turnstileSiteKey: string | null;
+  turnstileSecretKey: string | null;
+}
+
+/**
+ * PAYWALL_MODE: "enforce" | "off" | "auto" (default). In auto mode the paywall
+ * is enforced only when payments are fully configured, so a deployment without
+ * billing never strands users behind a lock they cannot open.
+ */
+export function getAccessConfig(): AccessConfig {
+  const mode = (process.env.PAYWALL_MODE ?? "auto").toLowerCase();
+  const billingReady = getPaddleConfig() !== null && getServiceRoleKey() !== null;
+  return {
+    paywallEnforced: mode === "enforce" ? true : mode === "off" ? false : billingReady,
+    freePreviewsGuest: intFromEnv("FREE_PREVIEWS_GUEST", 1, 0, 10),
+    freePreviewsPer30Days: intFromEnv("FREE_PREVIEWS_PER_30_DAYS", 3, 0, 100),
+    freeResearchGlobalDaily: intFromEnv("FREE_RESEARCH_GLOBAL_DAILY", 200, 0, 100_000),
+    creditsPerReport: intFromEnv("CREDITS_PER_REPORT", 1, 1, 100),
+    previewFindings: intFromEnv("PREVIEW_FINDINGS", 3, 1, 10),
+    previewKeyPoints: intFromEnv("PREVIEW_KEY_POINTS", 2, 0, 8),
+    subscriberDailyResearch: intFromEnv("SUBSCRIBER_DAILY_RESEARCH", 20, 1, 1000),
+    turnstileSiteKey: process.env.TURNSTILE_SITE_KEY || null,
+    turnstileSecretKey: process.env.TURNSTILE_SECRET_KEY || null,
+  };
+}

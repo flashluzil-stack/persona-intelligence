@@ -6,7 +6,8 @@ import { sourceCredibility } from "./classify";
 import { assessConfidence, excerptFoundIn, type EvidenceForAssessment } from "./evidence";
 import { buildSourceRefs, verifiableText } from "./prompt-sources";
 import type { NewClaim } from "./store";
-import type { Relevance, SourceRecord, UsageRecord } from "./types";
+import en from "@/i18n/messages/en";
+import type { EngineMessages, Relevance, SourceRecord, UsageRecord } from "./types";
 
 export interface VerifiedExtraction {
   claims: NewClaim[];
@@ -36,6 +37,7 @@ export function verifyExtraction(
   raw: ClaimExtraction,
   byRef: Map<string, SourceRecord>,
   now: Date = new Date(),
+  m: EngineMessages = en.engine,
 ): VerifiedExtraction {
   const relevance = new Map<string, Relevance>();
   for (const a of raw.source_assessments) {
@@ -75,7 +77,7 @@ export function verifyExtraction(
         relationship: e.relationship,
         sourceCredibility: credibility,
         supportStrength: e.support_strength,
-        notes: source.retrievalStatus === "retrieved" ? null : "Verified against the search snippet only.",
+        notes: source.retrievalStatus === "retrieved" ? null : m.claims.snippetOnly,
       });
       assessments.push({ domain: source.domain, credibility, strength: e.support_strength, relationship: e.relationship });
       if (source.publishedAt) dates.push(source.publishedAt);
@@ -86,7 +88,7 @@ export function verifyExtraction(
     }
 
     const inConflict = Boolean(c.conflict_key && (conflictCounts.get(c.conflict_key) ?? 0) > 1 && conflictKeys.has(c.conflict_key));
-    const confidence = assessConfidence(c.evidence_type, assessments, inConflict);
+    const confidence = assessConfidence(c.evidence_type, assessments, inConflict, m.confidence);
     const sortedDates = [...dates, parseLooseDate(c.as_of_date)].filter((d): d is string => Boolean(d)).sort();
     let temporal = c.temporal_status;
     let limitations = c.limitations ?? null;
@@ -94,7 +96,7 @@ export function verifyExtraction(
       const newest = sortedDates.at(-1);
       if (!newest || now.getTime() - new Date(newest).getTime() > STALE_CURRENT_MS) {
         temporal = "unknown";
-        limitations = [limitations, newest ? "Newest supporting source is more than two years old; current status is not verified." : "Supporting sources are undated; current status is not verified."]
+        limitations = [limitations, newest ? m.claims.staleCurrent : m.claims.undatedCurrent]
           .filter(Boolean)
           .join(" ");
       }
@@ -128,12 +130,14 @@ export async function extractClaims(
   identityDescription: string,
   sources: SourceRecord[],
   signal?: AbortSignal,
+  m: EngineMessages = en.engine,
+  language: "en" | "he" = "en",
 ): Promise<{ result: VerifiedExtraction; usage: UsageRecord }> {
   const refs = buildSourceRefs(sources);
-  const prompt = extractionPrompt(input, identityDescription, refs.prompt);
+  const prompt = extractionPrompt(input, identityDescription, refs.prompt, language);
   const { data, usage } = await model.generate(
     { name: "claim_extraction", schema: claimExtractionSchema, maxOutputTokens: 12_000, ...prompt },
     signal,
   );
-  return { result: verifyExtraction(data, refs.byRef), usage };
+  return { result: verifyExtraction(data, refs.byRef, new Date(), m), usage };
 }

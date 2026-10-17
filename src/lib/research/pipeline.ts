@@ -7,7 +7,8 @@ import { isAutomatedRetrievalRestricted } from "./classify";
 import { dedupeResults } from "./dedupe";
 import { extractClaims } from "./extraction";
 import { resolveIdentityHeuristically, resolveIdentityWithAI } from "./identity";
-import { generateProfileSections, VISUAL_STYLE_UNAVAILABLE } from "./profile";
+import { generateProfileSections, visualStyleUnavailable } from "./profile";
+import { getMessages } from "@/i18n/messages";
 import { buildQueryPlan } from "./queries";
 import { buildQualityReport } from "./quality";
 import type { ClaimRow, IdentityState, JobError, JobRow, NewSource, ProjectRow, ResearchStore, UsageTotals } from "./store";
@@ -53,6 +54,9 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
   if (job.status === "needs_input" && !job.identity.selected) return job;
   const project = await store.getProject(job.projectId);
   if (!project) return null;
+  const language = project.input.locale === "he" ? "he" : "en";
+  const messages = getMessages(language);
+  const E = messages.engine;
 
   const progress: StageLogEntry[] = [...job.progress];
   const usage: UsageRecord[] = [];
@@ -79,13 +83,13 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
   };
   const consumeAiBudget = () => {
     if (aiCalls >= limits.maxAiCallsPerJob) {
-      throw new StageFailure("fact_extraction", "ai_budget", "The AI call budget for this research job was reached.");
+      throw new StageFailure("fact_extraction", "ai_budget", E.aiBudget);
     }
     aiCalls++;
   };
   const checkTime = (stage: ResearchStage) => {
     if (signal.aborted) {
-      throw new StageFailure(stage, "timeout", "The research job exceeded its time budget. Results saved so far are preserved.");
+      throw new StageFailure(stage, "timeout", E.timeout);
     }
   };
   const flushUsage = async () => {
@@ -125,7 +129,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
         queriesFailed++;
         const pe = err instanceof ProviderError ? err : new ProviderError(deps.search!.label, "unknown", "Search failed");
         errors.push(pe);
-        await log(stage, "warning", `A search query failed: ${pe.toUserMessage()}`);
+        await log(stage, "warning", E.queryFailed(pe.toUserMessage(E.provider)));
         // Credentials/quota errors will not recover within this job.
         if (pe.code === "unauthorized" || pe.code === "quota_exceeded") break;
       }
@@ -154,32 +158,32 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
   try {
     // ---------------------------------------------------------------- Stage 1
     const parsed = researchInputSchema.safeParse(project.input);
-    if (!parsed.success) throw new StageFailure("input_validation", "invalid_input", "The saved research input is invalid. Start a new research project.");
+    if (!parsed.success) throw new StageFailure("input_validation", "invalid_input", E.invalidInput);
     const input = parsed.data;
     if (!deps.search) {
       unavailableProviders.add("web_search");
       throw new StageFailure(
         "input_validation",
         "search_not_configured",
-        "No live web search provider is configured, so no research was performed. Configure BRAVE_SEARCH_API_KEY or TAVILY_API_KEY.",
+        E.searchNotConfigured,
       );
     }
     if (!deps.model) unavailableProviders.add("ai_analysis");
     if (!deps.content) unavailableProviders.add("page_retrieval");
-    await log("input_validation", "done", "Input validated.");
+    await log("input_validation", "done", E.inputValidated);
 
     const plan = buildQueryPlan(input, limits.maxQueriesPerJob);
 
     // ---------------------------------------------------------------- Stage 2
     if (!identity.selected) {
-      await log("identity_discovery", "running", `Running ${plan.identity.length} identity search${plan.identity.length === 1 ? "" : "es"}.`);
+      await log("identity_discovery", "running", E.identitySearches(plan.identity.length));
       const { results, errors } = await runQueries(plan.identity, input, "identity_discovery");
       if (results.length === 0 && errors.length > 0) {
-        throw new StageFailure("identity_discovery", errors[0].code, `Search failed: ${errors[0].toUserMessage()}`);
+        throw new StageFailure("identity_discovery", errors[0].code, E.searchFailed(errors[0].toUserMessage(E.provider)));
       }
       if (results.length === 0) {
         await flushUsage();
-        throw new StageFailure("identity_discovery", "no_results", "No public search results were found for this name and context. Try adding a company, role, or known profile URL.");
+        throw new StageFailure("identity_discovery", "no_results", E.noResults);
       }
       const { results: deduped } = dedupeResults(results, limits.maxSourcesPerJob);
       const stored = await store.upsertSources(project.id, jobId, deduped.map(toNewSource));
@@ -192,7 +196,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
           if (outcome.usage) track(outcome.usage);
         } catch (err) {
           const pe = err instanceof ProviderError ? err : null;
-          await log("identity_discovery", "warning", `AI identity matching failed (${pe?.toUserMessage() ?? "unknown error"}); falling back to keyword grouping.`);
+          await log("identity_discovery", "warning", E.aiIdentityFailed(pe?.toUserMessage(E.provider) ?? E.unknownError));
           outcome = resolveIdentityHeuristically(input, stored);
         }
       } else {
@@ -202,17 +206,17 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
       await flushUsage();
       if (identity.decision === "no_credible_match" || !identity.candidates?.length) {
         await store.updateJob(jobId, { identity });
-        throw new StageFailure("identity_discovery", "no_match", "None of the search results could be attributed to the person you described. Add more identifying context and try again.");
+        throw new StageFailure("identity_discovery", "no_match", E.noMatch);
       }
       if (!outcome.autoSelected) {
-        await log("identity_discovery", "warning", "Identity is ambiguous or unconfirmed. Waiting for you to choose the intended person.");
+        await log("identity_discovery", "warning", E.ambiguous);
         await store.updateJob(jobId, { status: "needs_input", identity });
         await store.updateProject(project.id, { status: "needs_input" });
         return store.getJob(jobId);
       }
-      await log("identity_discovery", "done", `Matched to "${identity.selected!.label}" using your identifiers.`);
+      await log("identity_discovery", "done", E.matched(identity.selected!.label));
     } else {
-      await log("identity_discovery", "skipped", `Using confirmed identity: ${identity.selected.label}.`);
+      await log("identity_discovery", "skipped", E.usingConfirmed(identity.selected.label));
     }
 
     const selected = identity.selected!;
@@ -237,12 +241,12 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
     const selectedCandidate = identity.candidates?.find((c) => c.id === selected.candidateId);
     const disambiguator = input.company || input.role ? undefined : selectedCandidate?.attributes[0];
     const sourceQueries = buildQueryPlan(input, limits.maxQueriesPerJob, disambiguator).sources;
-    await log("source_search", "running", `Running ${sourceQueries.length} targeted search${sourceQueries.length === 1 ? "" : "es"}.`);
+    await log("source_search", "running", E.targetedSearches(sourceQueries.length));
     const { results: sourceResults, errors: searchErrors } = await runQueries(sourceQueries, input, "source_search");
     if (searchErrors.length > 0 && sourceResults.length === 0) {
-      warnings.push("Targeted source searches failed; the profile relies on identity search results only.");
+      warnings.push(E.targetedFailed);
     }
-    await log("source_search", searchErrors.length ? "warning" : "done", `${sourceResults.length} results from ${queriesRun} queries (${queriesFailed} failed).`);
+    await log("source_search", searchErrors.length ? "warning" : "done", E.searchSummary(sourceResults.length, queriesRun, queriesFailed));
     await flushUsage();
 
     // ---------------------------------------------------------------- Stage 5 (dedupe before fetch)
@@ -259,7 +263,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
     await log(
       "deduplication",
       "done",
-      `Removed ${stats.exactDuplicates} duplicate URLs and ${stats.nearDuplicates} near-identical pages; ${stats.trimmed} extra results skipped by the source limit.`,
+      E.dedupe(stats.exactDuplicates, stats.nearDuplicates, stats.trimmed),
     );
 
     let sources = await store.listSources(project.id);
@@ -280,7 +284,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
       .filter((s) => s.relevance !== "unrelated" && s.retrievalStatus !== "retrieved")
       .sort((a, b) => Number(chosen.has(b.normalizedUrl)) - Number(chosen.has(a.normalizedUrl)));
     if (!deps.content || limits.maxPageFetchesPerJob === 0) {
-      await log("source_retrieval", "skipped", "Page retrieval is disabled; analysis uses search snippets only.");
+      await log("source_retrieval", "skipped", E.retrievalDisabled);
     } else {
       let retrieved = 0;
       let notPermitted = 0;
@@ -289,7 +293,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
       for (const s of candidatesForFetch) {
         if (signal.aborted) break;
         if (isAutomatedRetrievalRestricted(s.domain)) {
-          const note = "This platform restricts automated access; only the search snippet is used.";
+          const note = E.platformRestricted;
           await store.updateSource(s.id, { retrievalStatus: "not_permitted", retrievalNote: note });
           Object.assign(s, { retrievalStatus: "not_permitted", retrievalNote: note });
           notPermitted++;
@@ -303,7 +307,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
           const patch: Partial<NewSource> = {
             contentText: page.text,
             retrievalStatus: "retrieved",
-            retrievalNote: page.truncated ? "Long page; only the beginning was analysed." : null,
+            retrievalNote: page.truncated ? E.longPage : null,
             title: s.title ?? page.title,
             author: page.author,
             publishedAt: s.publishedAt ?? page.publishedAt,
@@ -324,7 +328,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
       await log(
         "source_retrieval",
         failed > 0 ? "warning" : "done",
-        `Retrieved ${retrieved} page${retrieved === 1 ? "" : "s"}; ${notPermitted} not permitted or blocked; ${failed} failed. Other sources use search snippets.`,
+        E.retrievalSummary(retrieved, notPermitted, failed),
       );
     }
     await flushUsage();
@@ -335,48 +339,48 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
     const analysable = sources.filter((s) => s.relevance !== "unrelated" && (s.contentText || s.excerpt));
     if (!deps.model) {
       for (const stage of ["fact_extraction", "claim_association", "conflict_analysis", "interest_analysis", "profile_generation"] as const) {
-        await log(stage, "skipped", "AI analysis is not configured (OPENAI_API_KEY). Sources were collected but no claims were extracted.");
+        await log(stage, "skipped", E.aiNotConfigured);
       }
-      warnings.push("AI analysis is not configured; no claims or profile were generated.");
+      warnings.push(E.aiNotConfiguredWarning);
     } else if (analysable.length === 0) {
-      await log("fact_extraction", "warning", "No sources about this person were available to analyse.");
-      warnings.push("No analysable sources about this person were found.");
+      await log("fact_extraction", "warning", E.noAnalysable);
+      warnings.push(E.noAnalysableWarning);
     } else {
-      await log("fact_extraction", "running", `Extracting claims from ${analysable.length} sources.`);
+      await log("fact_extraction", "running", E.extracting(analysable.length));
       consumeAiBudget();
       try {
         await store.deleteJobClaims(jobId);
-        const { result, usage: u } = await extractClaims(deps.model, input, identityDescription, analysable, signal);
+        const { result, usage: u } = await extractClaims(deps.model, input, identityDescription, analysable, signal, E, language);
         track(u);
         for (const [sourceId, relevance] of result.relevance) {
           await store.updateSource(sourceId, { relevance });
         }
         claimsRejected = result.rejected.length;
         conflicts = result.conflicts;
-        await log("fact_extraction", "done", `Proposed ${result.claims.length + result.rejected.length} claims.`);
+        await log("fact_extraction", "done", E.proposed(result.claims.length + result.rejected.length));
         claims = await store.insertClaims(project.id, jobId, personId, result.claims);
         await log(
           "claim_association",
           claimsRejected ? "warning" : "done",
-          `Linked ${claims.length} claims to verbatim source excerpts; rejected ${claimsRejected} that could not be verified.`,
+          E.linked(claims.length, claimsRejected),
         );
         await log(
           "conflict_analysis",
           conflicts.length ? "warning" : "done",
-          conflicts.length ? `Found ${conflicts.length} conflicting set${conflicts.length === 1 ? "" : "s"} of claims.` : "No conflicting claims detected.",
+          conflicts.length ? E.conflictsFound(conflicts.length) : E.noConflicts,
         );
       } catch (err) {
         const pe = err instanceof ProviderError ? err : null;
         if (err instanceof StageFailure) throw err;
-        await log("fact_extraction", "error", `Fact extraction failed: ${pe?.toUserMessage() ?? "unexpected error"}. Sources are preserved.`);
-        warnings.push("Fact extraction failed; sources are saved but no claims were produced.");
+        await log("fact_extraction", "error", E.extractionFailed(pe?.toUserMessage(E.provider) ?? E.unknownError));
+        warnings.push(E.extractionFailedWarning);
       }
       await flushUsage();
 
       // ---------------------------------------------------------------- Stages 9–10
       if (claims.length > 0 || analysable.length > 0) {
-        await log("interest_analysis", "running", "Analysing recurring topics, communication and values.");
-        await log("profile_generation", "running", "Generating evidence-linked profile sections.");
+        await log("interest_analysis", "running", E.analysing);
+        await log("profile_generation", "running", E.generating);
         try {
           consumeAiBudget();
           const sourcesForProfile = (await store.listSources(project.id)).filter((s) => s.relevance !== "unrelated");
@@ -387,21 +391,23 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
             sources: sourcesForProfile,
             sections: GENERATED_SECTION_TYPES,
             signal,
+            messages: E,
+            language,
           });
           track(generated.usage);
           insufficient = generated.insufficient;
           await store.saveSections(project.id, personId, jobId, [
             ...generated.sections,
-            { sectionType: "visual_style", content: { ...VISUAL_STYLE_UNAVAILABLE }, modelMetadata: {} },
+            { sectionType: "visual_style", content: { ...visualStyleUnavailable(E) }, modelMetadata: {} },
           ]);
           profileGenerated = true;
-          await log("interest_analysis", "done", "Topic analysis complete.");
-          await log("profile_generation", insufficient.length ? "warning" : "done", insufficient.length ? `Profile generated; insufficient evidence for: ${insufficient.join(", ")}.` : "Profile generated.");
+          await log("interest_analysis", "done", E.topicsDone);
+          await log("profile_generation", insufficient.length ? "warning" : "done", insufficient.length ? E.generatedInsufficient(insufficient.map((x) => messages.sectionLabels[x as keyof typeof messages.sectionLabels] ?? x).join(", ")) : E.generated);
         } catch (err) {
           if (err instanceof StageFailure) throw err;
           const pe = err instanceof ProviderError ? err : null;
-          await log("profile_generation", "error", `Profile generation failed: ${pe?.toUserMessage() ?? "unexpected error"}. Claims and sources are preserved.`);
-          warnings.push("Profile generation failed; claims and sources are saved.");
+          await log("profile_generation", "error", E.generationFailed(pe?.toUserMessage(E.provider) ?? E.unknownError));
+          warnings.push(E.generationFailedWarning);
         }
         await flushUsage();
       }
@@ -409,7 +415,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
 
     // ---------------------------------------------------------------- Stage 12
     checkTime("save_and_quality");
-    await log("meeting_brief", "skipped", "Meeting briefs are generated on request from the Meeting preparation page.");
+    await log("meeting_brief", "skipped", E.briefsOnRequest);
     const finalSources = await store.listSources(project.id);
     const quality = buildQualityReport({
       sources: finalSources,
@@ -422,9 +428,11 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
       warnings,
       unavailableProviders: [...unavailableProviders],
       profileGenerated,
+      messages: E,
+      sectionLabels: messages.sectionLabels,
     });
     const status = profileGenerated && warnings.length === 0 ? "completed" : "partial";
-    await log("save_and_quality", status === "completed" ? "done" : "warning", status === "completed" ? "Research complete." : "Research finished with partial results.");
+    await log("save_and_quality", status === "completed" ? "done" : "warning", status === "completed" ? E.complete : E.partial);
     await store.updateJob(jobId, { status, qualityReport: quality, completedAt: now().toISOString(), identity });
     await store.updateProject(project.id, { status, lastResearchedAt: now().toISOString() });
     await store.audit("research.completed", { projectId: project.id, jobId, status });
@@ -434,8 +442,8 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
       err instanceof StageFailure
         ? { stage: err.stage, code: err.code, message: err.message }
         : signal.aborted
-          ? { stage: progress.at(-1)?.stage ?? "input_validation", code: "timeout", message: "The research job exceeded its time budget. Saved results are preserved." }
-          : { stage: progress.at(-1)?.stage ?? "input_validation", code: "unexpected", message: "An unexpected error stopped the research job. Saved results are preserved." };
+          ? { stage: progress.at(-1)?.stage ?? "input_validation", code: "timeout", message: E.timeout }
+          : { stage: progress.at(-1)?.stage ?? "input_validation", code: "unexpected", message: E.unexpected };
     try {
       await flushUsage();
     } catch {

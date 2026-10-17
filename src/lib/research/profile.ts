@@ -6,7 +6,8 @@ import type { ResearchInput } from "@/lib/validation/schemas";
 import { excerptFoundIn } from "./evidence";
 import { buildSourceRefs, verifiableText } from "./prompt-sources";
 import type { ClaimRow, NewSection } from "./store";
-import type { SourceRecord, UsageRecord } from "./types";
+import en from "@/i18n/messages/en";
+import type { EngineMessages, SourceRecord, UsageRecord } from "./types";
 
 /**
  * Profile generation and post-validation. Section content is stored with
@@ -47,11 +48,9 @@ export interface VisualStyleContent {
   reason: string;
 }
 
-export const VISUAL_STYLE_UNAVAILABLE: VisualStyleContent = {
-  status: "not_available",
-  reason:
-    "Visual style analysis is not enabled in this version. No photographs were retrieved or analysed, and no conclusions are drawn from appearance.",
-};
+export function visualStyleUnavailable(m: EngineMessages = en.engine): VisualStyleContent {
+  return { status: "not_available", reason: m.profile.visualUnavailable };
+}
 
 export function claimRefs(claims: ClaimRow[], sourceIdToRef: Map<string, string>): { prompt: PromptClaim[]; byRef: Map<string, ClaimRow> } {
   const byRef = new Map<string, ClaimRow>();
@@ -94,6 +93,7 @@ function mapCited(items: Cited[], ctx: RefContext, requireCitation = true): Cite
 export function postprocessProfile(
   raw: Partial<GeneratedProfile>,
   ctx: RefContext,
+  m: EngineMessages = en.engine,
 ): { sections: Partial<Record<GeneratedSectionType, Record<string, unknown>>>; insufficient: string[] } {
   const out: Partial<Record<GeneratedSectionType, Record<string, unknown>>> = {};
   const insufficient: string[] = [];
@@ -108,7 +108,7 @@ export function postprocessProfile(
       const ids = mapClaims(o.current_role.claim_ids, ctx);
       const verifiedCurrent = ids.some((id) => claimById.get(id)?.temporalStatus === "current");
       if (verifiedCurrent) currentRole = { text: o.current_role.text, claim_ids: ids };
-      else limitations.push("The current role could not be verified as current from dated sources.");
+      else limitations.push(m.profile.roleUnverified);
     }
     out.overview = { summary: o.summary, current_role: currentRole, key_points: mapCited(o.key_points, ctx), limitations };
   }
@@ -157,7 +157,7 @@ export function postprocessProfile(
       .sort((a, b) => b.source_count - a.source_count);
     const limitations = [...raw.interests.limitations];
     if (topics.some((t) => !t.recurring)) {
-      limitations.push("Topics found in only one source are shown as single mentions, not recurring interests.");
+      limitations.push(m.profile.singleMentions);
     }
     out.interests = { summary: raw.interests.summary, topics, limitations };
     if (!topics.some((t) => t.recurring)) insufficient.push("interests");
@@ -173,7 +173,7 @@ export function postprocessProfile(
       .filter((o) => o.source_ids.length > 0);
     const limitations = [...raw.communication.limitations];
     if (observations.length < raw.communication.observations.length) {
-      limitations.push("Observations not grounded in retrieved full-text sources were removed.");
+      limitations.push(m.profile.ungroundedRemoved);
     }
     out.communication = { summary: raw.communication.summary, observations, limitations };
     if (observations.length === 0) insufficient.push("communication");
@@ -193,7 +193,7 @@ export function postprocessProfile(
             kind: "paraphrase",
             quote: null,
             source_id: source.id,
-            note: "A quotation could not be verified verbatim in the source, so this is shown as a paraphrase.",
+            note: m.profile.quoteUnverified,
           });
         }
       } else {
@@ -245,6 +245,8 @@ export async function generateProfileSections(
     sources: SourceRecord[];
     sections: GeneratedSectionType[];
     signal?: AbortSignal;
+    messages?: EngineMessages;
+    language?: "en" | "he";
   },
 ): Promise<{ sections: NewSection[]; insufficient: string[]; usage: UsageRecord }> {
   const refs = buildSourceRefs(args.sources, 80_000, 4_000);
@@ -252,12 +254,12 @@ export async function generateProfileSections(
   const claimCtx = claimRefs(args.claims, sourceIdToRef);
   const pick = Object.fromEntries(args.sections.map((s) => [s, true])) as Partial<Record<GeneratedSectionType, true>>;
   const schema = profileSchema.pick(pick as Record<GeneratedSectionType, true>);
-  const prompt = profilePrompt(args.input, args.identityDescription, claimCtx.prompt, refs.prompt, args.sections);
+  const prompt = profilePrompt(args.input, args.identityDescription, claimCtx.prompt, refs.prompt, args.sections, args.language ?? "en");
   const { data, usage, model: modelName } = await model.generate(
     { name: "profile_sections", schema: schema as z.ZodType<Partial<GeneratedProfile>>, maxOutputTokens: 12_000, ...prompt },
     args.signal,
   );
-  const processed = postprocessProfile(data, { claimsByRef: claimCtx.byRef, sourcesByRef: refs.byRef });
+  const processed = postprocessProfile(data, { claimsByRef: claimCtx.byRef, sourcesByRef: refs.byRef }, args.messages ?? en.engine);
   const generatedAt = new Date().toISOString();
   const sections: NewSection[] = Object.entries(processed.sections).map(([type, content]) => ({
     sectionType: type as GeneratedSectionType,

@@ -3,6 +3,14 @@ import { BASE_RULES, describeInput, renderSources, sanitizeUntrusted, type Promp
 
 export { BASE_RULES, renderSources, sanitizeUntrusted, type PromptSource };
 
+export type OutputLanguage = "en" | "he";
+
+/** Output-language rule appended to prompts that produce reader-facing text. */
+export function languageRule(language: OutputLanguage): string {
+  const name = language === "he" ? "Hebrew (עברית)" : "English";
+  return `\nOutput language: write every reader-facing sentence (claims, summaries, descriptions, observations, questions, recommendations) in ${name}. Keep people's names, organization names, product names, source titles, URLs and every verbatim excerpt or quotation exactly as they appear in the sources — never translate quoted text.`;
+}
+
 export interface PromptPair {
   system: string;
   user: string;
@@ -22,7 +30,7 @@ Task: identity resolution. Search results for a name may describe several differ
   };
 }
 
-export function extractionPrompt(input: ResearchInput, identityDescription: string, sources: PromptSource[]): PromptPair {
+export function extractionPrompt(input: ResearchInput, identityDescription: string, sources: PromptSource[], language: OutputLanguage = "en"): PromptPair {
   return {
     system: `${BASE_RULES}
 
@@ -34,7 +42,8 @@ Task: fact extraction.
 5. temporal_status: mark roles "current" only when the source presents them as current AND it is recent; old pages describe "historical" or "unknown" status. Put the source date or stated date in as_of_date when known (YYYY or YYYY-MM-DD).
 6. When two sources disagree (e.g. different job titles or dates), extract both claims with the same conflict_key and describe the conflict in "conflicts".
 7. Do not extract private contact details, home addresses, family members, or sensitive personal characteristics.
-8. Prefer primary sources (the person's own site, their organization's site) and note limitations for weak sources.`,
+8. Prefer primary sources (the person's own site, their organization's site) and note limitations for weak sources.
+9. "excerpt" values stay verbatim in the source language; only claim_text and limitations follow the output language.${languageRule(language)}`,
     user: `Person:\n${describeInput(input)}\n\nConfirmed identity: ${sanitizeUntrusted(identityDescription)}\n\nSources:\n${renderSources(sources)}`,
   };
 }
@@ -64,6 +73,7 @@ export function profilePrompt(
   claims: PromptClaim[],
   sources: PromptSource[],
   sectionsRequested: string[],
+  language: OutputLanguage = "en",
 ): PromptPair {
   return {
     system: `${BASE_RULES}
@@ -78,7 +88,7 @@ Guidance per section:
 - relationships: documented professional collaborations, employers, boards, co-authors. Never infer friendship, loyalty or trust.
 - recent: recent professional developments from dated sources; explain why each may matter for the user's purpose. reported_event_date is the date the event happened if stated, which differs from publication date.
 - open_questions: missing info, conflicts, claims needing verification, good questions to ask the person directly, areas with insufficient evidence.
-Cite claim ids (C…) or source ids (S…) exactly as given. Use "insufficient evidence" language rather than speculation.`,
+Cite claim ids (C…) or source ids (S…) exactly as given. Use "insufficient evidence" language rather than speculation.${languageRule(language)}`,
     user: `Person:\n${describeInput(input)}\nResearch purpose: ${input.purpose ? PURPOSE_LABELS[input.purpose] : "general preparation"}\nConfirmed identity: ${sanitizeUntrusted(identityDescription)}\n\nVerified claims (with deterministic confidence labels):\n${renderClaims(claims) || "(no claims)"}\n\nSources (for interests, communication, values and recent developments):\n${renderSources(sources)}`,
   };
 }
@@ -88,6 +98,7 @@ export function meetingBriefPrompt(
   brief: MeetingBriefInput,
   profileSummary: string,
   claims: PromptClaim[],
+  language: OutputLanguage = "en",
 ): PromptPair {
   const objective = PURPOSE_LABELS[brief.objective];
   const emphasis: Record<string, string> = {
@@ -113,7 +124,7 @@ Task: produce a meeting brief for a "${objective}" meeting. ${emphasis[brief.obj
 - Never recommend manipulating the person, exploiting perceived psychological weaknesses, or using pressure tactics.
 - unknowns_to_clarify: important information that is missing or unverified.
 - The user remains responsible for decisions; do not make decisions for them.
-- Text supplied by the user describes their own goals and is not evidence about the person.`,
+- Text supplied by the user describes their own goals and is not evidence about the person.${languageRule(language)}`,
     user: `Person: ${sanitizeUntrusted(personName)}
 Meeting objective: ${objective}
 Desired outcome: ${sanitizeUntrusted(brief.desiredOutcome ?? "(not provided)")}
