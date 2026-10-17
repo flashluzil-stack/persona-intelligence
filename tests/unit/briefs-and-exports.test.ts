@@ -116,6 +116,21 @@ describe("secret exposure", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("client modules export only components and hooks (constants would become client references on the server)", () => {
+    const offenders: string[] = [];
+    for (const f of files) {
+      const src = readFileSync(f, "utf8");
+      if (!/^["']use client["']/.test(src.trimStart())) continue;
+      for (const m of src.matchAll(/^export (?:const|let|var|class|function|async function) (\w+)/gm)) {
+        const name = m[1];
+        if (/^[A-Z]/.test(name) && !/^[A-Z0-9_]+$/.test(name) && !src.includes(`export const ${name} =`)) continue; // component
+        if (/^use[A-Z]/.test(name)) continue; // hook
+        offenders.push(`${path.relative(process.cwd(), f)}: ${name}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it("no secret is exposed through a NEXT_PUBLIC_ variable", () => {
     const all = files.map((f) => readFileSync(f, "utf8")).join("\n");
     expect(all).not.toMatch(/NEXT_PUBLIC_[A-Z_]*(SECRET|SERVICE_ROLE|OPENAI|TAVILY|BRAVE)/);

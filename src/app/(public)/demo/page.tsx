@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/site-chrome";
-import { PROFILE_TAB_IDS, ProfileSearchBox, ProfileTabContent, ProfileTabs } from "@/components/profile/profile-view";
+import { ProfileSearchBox, ProfileTabContent, ProfileTabs } from "@/components/profile/profile-view";
 import { Badge, Notice } from "@/components/ui/primitives";
 import { formatDate } from "@/i18n/format";
 import { getI18n } from "@/i18n/server";
+import { PROFILE_TAB_IDS } from "@/lib/research/tabs";
 import { DEMO_CLAIMS, DEMO_PERSON, DEMO_QUALITY, DEMO_SECTIONS, DEMO_SOURCES } from "@/lib/demo/fictional-profile";
 
 export async function generateMetadata(): Promise<Metadata> {

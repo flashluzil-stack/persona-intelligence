@@ -18,7 +18,7 @@ export class PaymentProviderError extends Error {
   }
 }
 
-const apiBase = (env: PaddleConfig["environment"]) => (env === "production" ? "https://api.paddle.com" : "https://sandbox-api.paddle.com");
+const apiBase = (cfg: PaddleConfig) => cfg.apiBaseUrl ?? (cfg.environment === "production" ? "https://api.paddle.com" : "https://sandbox-api.paddle.com");
 
 export interface PaddleClientOptions {
   fetchImpl?: typeof fetch;
@@ -31,7 +31,7 @@ export class PaddleClient {
   ) {}
 
   private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const res = await (this.opts.fetchImpl ?? fetch)(`${apiBase(this.cfg.environment)}${path}`, {
+    const res = await (this.opts.fetchImpl ?? fetch)(`${apiBase(this.cfg)}${path}`, {
       method,
       headers: { Authorization: `Bearer ${this.cfg.apiKey}`, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),

@@ -59,13 +59,6 @@ export interface ConfidenceAssessment {
   rationale: string;
 }
 
-export const CONFIDENCE_LABELS: Record<ConfidenceLabel, string> = {
-  high: "High confidence",
-  moderate: "Moderate confidence",
-  low: "Low confidence",
-  insufficient: "Insufficient evidence",
-};
-
 /**
  * Assigns a confidence label from verified evidence. Source credibility and
  * the strength of support for this particular claim are considered separately.

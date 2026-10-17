@@ -27,6 +27,9 @@ src/lib/db/             supabase-store (ResearchStore impl), queries (page loade
 src/lib/security/       ip.ts (pure SSRF checks; browser-safe), ssrf.ts (DNS), url.ts, rate-limit.ts
 src/lib/export/         citations + markdown exports
 src/lib/demo/           FICTIONAL data only (.example domains); always labelled
+src/lib/billing/        catalog (central prices), paddle (client + signature), webhook (pure logic), repository,
+                        entitlements, preview (server-built free preview), gate, offers
+src/i18n/               config, messages/{en,he}.ts (typed, parity-tested), legal/, server.ts, provider.tsx, format.ts
 src/components/         ui primitives, profile/evidence renderers (shared by live + demo), research, brief
 supabase/migrations     schema, RLS, functions;  supabase/tests/auth-stub.sql for local tests
 tests/unit, tests/integration (MemoryStore + fakes), tests/db (pg, RLS)
@@ -51,6 +54,12 @@ tests/unit, tests/integration (MemoryStore + fakes), tests/db (pg, RLS)
 - Never export plain objects or constants from `"use client"` modules for server use: they become client references. Put shared constants in `lib/`.
 - No sensitive-trait inference, facial recognition, appearance-based judgements, or manipulation advice. Keep these rules in the prompts and the UI copy.
 
+## Localization and billing rules
+
+- No hardcoded UI strings: add keys to BOTH `en.ts` and `he.ts` (a test enforces parity). Server: `getI18n()`; client: `useI18n()`. Use logical CSS and `<bdi>`/`dir="auto"` for names, URLs and mixed text. Never translate names, source titles or quotes.
+- Premium report content is gated on the server: pages call `requireUnlockedReport()`, APIs call `requireFullReport()`, and locked pages render only `buildPreview()` output. Never pass full report data to a client component for a locked report.
+- Entitlements change only through the signed Paddle webhook or the unlock RPCs (service role, idempotent SQL functions). Never grant access from the browser or simulate payment success.
+
 ## Conventions
 
 - TypeScript strict. Server-only modules import `"server-only"`.
@@ -60,4 +69,4 @@ tests/unit, tests/integration (MemoryStore + fakes), tests/db (pg, RLS)
 
 ## Next steps
 
-Visual style analysis (with consent and permission checks, no biometrics), native PDF export, a durable job queue, a Redis rate limiter, Hebrew/RTL locale, team workspaces and billing (usage tables already exist).
+Visual style analysis (with consent and permission checks, no biometrics), native PDF export, a durable job queue, a Redis rate limiter, team workspaces.

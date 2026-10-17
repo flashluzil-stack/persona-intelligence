@@ -154,6 +154,8 @@ export interface PaddleConfig {
   apiKey: string;
   clientToken: string;
   webhookSecret: string;
+  /** Test-only API override (sandbox only), e.g. a local mock in end-to-end tests. */
+  apiBaseUrl: string | null;
 }
 
 /** Paddle Billing credentials. All three are required for purchases to work. */
@@ -166,6 +168,7 @@ export function getPaddleConfig(): PaddleConfig | null {
     apiKey: env.PADDLE_API_KEY,
     clientToken: env.PADDLE_CLIENT_TOKEN,
     webhookSecret: env.PADDLE_WEBHOOK_SECRET,
+    apiBaseUrl: env.PADDLE_ENVIRONMENT !== "production" && env.PADDLE_API_BASE_URL ? env.PADDLE_API_BASE_URL.replace(/\/$/, "") : null,
   };
 }
 

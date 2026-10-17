@@ -8,28 +8,13 @@ import { formatDateTime } from "@/i18n/format";
 import { useI18n } from "@/i18n/provider";
 import type { ProfileSectionType } from "@/lib/ai/schemas";
 import { evidenceContext } from "@/lib/research/numbering";
+import { PROFILE_TAB_IDS } from "@/lib/research/tabs";
 import type { ClaimRow, QualityReport, SectionRow } from "@/lib/research/store";
 import type { SourceRecord } from "@/lib/research/types";
 import { cn } from "@/lib/utils/cn";
 import { SectionActions } from "./actions";
 import { ClaimsExplorer, SourcesExplorer } from "./explorers";
 import { SectionContent } from "./sections";
-
-export const PROFILE_TAB_IDS = [
-  "overview",
-  "background",
-  "interests",
-  "communication",
-  "visual_style",
-  "values",
-  "relationships",
-  "recent",
-  "open_questions",
-  "evidence",
-  "sources",
-  "quality",
-] as const;
-export type ProfileTabId = (typeof PROFILE_TAB_IDS)[number];
 
 export interface ProfileViewData {
   sections: SectionRow[];

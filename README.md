@@ -25,7 +25,12 @@ This is a decision-support tool. It does **not** read minds, diagnose personalit
 | Settings: account, provider status, usage, retention, data export, account deletion | ✅ |
 | RLS, per-user quotas, rate limiting, audit events, retention | ✅ |
 | Visual style analysis of photos | ⏳ Not implemented: the section clearly reports “not available” |
-| Native PDF generation, team workspaces, billing, Hebrew/RTL locale | ⏳ Planned (the layout already uses logical CSS properties for RTL) |
+| English and Hebrew (RTL) interface, legal pages, emails-in-app copy, exports; language saved per account | ✅ Implemented, verified end to end in both languages on mobile and desktop |
+| Free preview without an account (guest session), moved to the account on sign-up/sign-in | ✅ Verified end to end |
+| Server-side paywall: free preview (overview + selected sourced findings), locked cards with genuine counts | ✅ Locked content is never sent to the browser (verified against HTML/RSC payloads) |
+| Purchases with Paddle: single report, credit packs, monthly and annual subscriptions | ✅ Implemented; verified with a mocked Paddle API and locally signed webhooks. **Not live until Paddle is configured and tested in its sandbox** |
+| Google and Apple sign-in | ✅ Implemented; buttons appear only when enabled in Supabase. **Not live until configured** |
+| Native PDF generation, team workspaces | ⏳ Planned |
 
 ## Technology
 
@@ -101,6 +106,19 @@ Tables: `user_settings`, `research_projects`, `persons`, `person_identifiers`, `
 1. Validate input → 2. identity search and candidate grouping (pause for the user's choice when ambiguous or when only a name was given) → 3. targeted searches (interviews, podcasts, publications, projects, talks, news) → 4. deduplicate (URL normalization and near-duplicate detection) → 5. retrieve permitted pages → 6. extract claims → 7. verify each excerpt verbatim against stored source text (unverifiable claims are discarded) → 8. conflict and date analysis (a “current” claim older than two years loses its current status) → 9–10. interest analysis and profile generation (sources and claims are referenced by ID, so the model cannot invent URLs) → 11. meeting brief on request → 12. save and build the quality report.
 
 Jobs run after the HTTP response (`after()`), save progress after every stage, and can be resumed if the server is recycled. Statuses: queued, running, needs input, completed, partially completed, failed.
+
+## Languages
+
+English (LTR) and Hebrew (RTL). The choice is stored in the `pi_locale` cookie and in `user_settings.locale`, falling back to the browser's `Accept-Language`. Dictionaries live in `src/i18n/messages/{en,he}.ts` (typed; a test enforces identical keys), legal pages in `src/i18n/legal/`. New reports are written in the language chosen when they are created; names, source titles and quotations are never translated.
+
+## Free preview, paywall and payments
+
+- **Free preview:** a short overview and selected sourced findings, built on the server by `buildPreview()`. Locked sections are described by genuine counts only. Premium pages redirect to `/research/[id]/unlock`, premium APIs answer `402`.
+- **Limits:** guests get `FREE_PREVIEWS_GUEST` locked previews, accounts `FREE_PREVIEWS_PER_30_DAYS`; a site-wide daily cap, per-IP limits and optional Cloudflare Turnstile protect provider costs.
+- **Purchases (Paddle Billing, merchant of record):** the server creates the Paddle transaction; the browser only opens Paddle's checkout. Entitlements are granted **only** by the signed webhook `POST /api/webhooks/paddle` (HMAC verified, idempotent per event, price checked against the purchase). Credits are an append-only ledger with unique idempotency keys; unlocks are one row per report, taken under an advisory lock, so nothing is deducted twice.
+- **Why Paddle:** Stripe does not onboard Israel-based sellers; Paddle acts as merchant of record (VAT/sales tax, invoices, refunds) and supports one-time payments and subscriptions with a hosted checkout (no card data touches this app).
+- **Catalogue:** `src/lib/billing/catalog.ts` holds a proposed default; override with `BILLING_CATALOG_JSON` and map each product to a Paddle price with `PADDLE_PRICE_*`.
+- `PAYWALL_MODE=auto` (default) enforces the paywall only when payments are fully configured, so existing deployments keep working. Reports created before the billing migration are grandfathered as unlocked.
 
 ## Testing
 

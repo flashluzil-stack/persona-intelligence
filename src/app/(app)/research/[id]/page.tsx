@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/site-chrome";
 import { LockedCards, PreviewView } from "@/components/paywall/preview-view";
 import { DeleteButton, NotesPanel, RefreshResearchButton } from "@/components/profile/actions";
-import { PROFILE_TAB_IDS, ProfileSearchBox, ProfileTabContent, ProfileTabs, ResearchDisclaimer } from "@/components/profile/profile-view";
+import { ProfileSearchBox, ProfileTabContent, ProfileTabs, ResearchDisclaimer } from "@/components/profile/profile-view";
 import { IdentityChooser } from "@/components/research/identity-chooser";
 import { JobProgress } from "@/components/research/job-progress";
 import { QualitySummary } from "@/components/research/quality-summary";
@@ -19,6 +19,7 @@ import { buildPreview, type LockedKey } from "@/lib/billing/preview";
 import { getAccessConfig, getPublicConfig } from "@/lib/config";
 import { loadProjectBundle } from "@/lib/db/queries";
 import { JOB_STATUS_DISPLAY } from "@/lib/research/status-display";
+import { PROFILE_TAB_IDS } from "@/lib/research/tabs";
 import { uuidSchema } from "@/lib/validation/schemas";
 
 export async function generateMetadata(): Promise<Metadata> {

@@ -25,23 +25,6 @@ export const SOURCE_TYPES = [
 ] as const;
 export type SourceType = (typeof SOURCE_TYPES)[number];
 
-export const SOURCE_TYPE_LABELS: Record<SourceType, string> = {
-  personal_website: "Personal website",
-  company_website: "Company website",
-  professional_network: "Professional network",
-  social_media: "Social media",
-  news: "News",
-  interview: "Interview",
-  podcast: "Podcast",
-  video: "Video",
-  conference: "Conference / event",
-  publication: "Publication",
-  portfolio: "Portfolio / project",
-  registry: "Registry",
-  reference: "Reference",
-  web_page: "Web page",
-};
-
 export type RetrievalStatus = "snippet_only" | "retrieved" | "not_permitted" | "blocked" | "failed";
 export type Relevance = "unassessed" | "about_person" | "possibly_about_person" | "unrelated";
 export type SourceCredibility = "primary" | "established_publication" | "secondary" | "user_generated" | "unknown";
@@ -63,21 +46,6 @@ export const RESEARCH_STAGES = [
   "save_and_quality",
 ] as const;
 export type ResearchStage = (typeof RESEARCH_STAGES)[number];
-
-export const STAGE_LABELS: Record<ResearchStage, string> = {
-  input_validation: "Validating input",
-  identity_discovery: "Identifying the person",
-  source_search: "Searching public sources",
-  source_retrieval: "Retrieving permitted pages",
-  deduplication: "Removing duplicates",
-  fact_extraction: "Extracting facts",
-  claim_association: "Linking claims to sources",
-  conflict_analysis: "Checking conflicts and dates",
-  interest_analysis: "Analysing professional interests",
-  profile_generation: "Generating the profile",
-  meeting_brief: "Meeting brief (on request)",
-  save_and_quality: "Saving and assessing quality",
-};
 
 export interface StageLogEntry {
   stage: ResearchStage;

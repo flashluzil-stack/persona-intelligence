@@ -67,6 +67,29 @@ Claims, profiles and meeting briefs need an OpenAI key, which requires **prepaid
 
 Each research run makes at most `RESEARCH_MAX_AI_CALLS` model calls (default 8; usually 3). Daily research quota per user: `RESEARCH_DAILY_QUOTA` (default 10).
 
+## 6. Guest previews, Google and Apple sign-in
+
+1. Supabase → **Authentication → Sign In / Providers**: enable **Allow anonymous sign-ins** (needed for previews without an account).
+2. Supabase → **Project Settings → API**: copy the **service_role / secret** key into Vercel as `SUPABASE_SERVICE_ROLE_KEY` (Sensitive).
+3. Google: create an OAuth client (Google Cloud Console → Credentials, type “Web application”). Authorised redirect URI: `https://<your-project-ref>.supabase.co/auth/v1/callback`. Paste the client ID and secret into Supabase → Providers → Google.
+4. Apple: needs an Apple Developer account (paid). Create a Services ID with the same Supabase callback URL and a Sign in with Apple key, then fill in Supabase → Providers → Apple.
+5. Supabase → **Authentication → URL Configuration**: Site URL = your app URL; add `https://<your-app>/auth/callback` to Redirect URLs.
+
+The Google and Apple buttons appear automatically once a provider is enabled in Supabase; until then they are hidden.
+
+## 7. Payments with Paddle (approve before going live)
+
+Creating a Paddle account is free; Paddle takes a fee per sale. Start in the **sandbox** (no real money).
+
+1. sandbox-vendors.paddle.com → **Catalog → Products**: create five prices (single report, 5 credits, 15 credits, monthly, annual). Copy each price ID into Vercel: `PADDLE_PRICE_SINGLE_REPORT`, `PADDLE_PRICE_CREDITS_SMALL`, `PADDLE_PRICE_CREDITS_LARGE`, `PADDLE_PRICE_MONTHLY`, `PADDLE_PRICE_ANNUAL`. Keep displayed prices in sync with `BILLING_CATALOG_JSON` (see `.env.example`).
+2. **Developer tools → Authentication**: create an API key (`PADDLE_API_KEY`, Sensitive) and a client-side token (`PADDLE_CLIENT_TOKEN`).
+3. **Developer tools → Notifications**: new destination `https://<your-app>/api/webhooks/paddle`, events: `transaction.completed`, `transaction.paid`, `transaction.payment_failed`, `subscription.*`, `adjustment.created`, `adjustment.updated`. Copy its secret key into `PADDLE_WEBHOOK_SECRET` (Sensitive).
+4. **Checkout → Checkout settings**: add your app domain to the approved domains and set the default payment link to `https://<your-app>/pricing`.
+5. Set `PADDLE_ENVIRONMENT=sandbox`, redeploy, and buy each product with Paddle's test card. Check the dashboard shows the purchase, credits and subscription.
+6. Only after sandbox tests pass: repeat in the live Paddle account (business verification required) and set `PADDLE_ENVIRONMENT=production`.
+
+Optional: Cloudflare Turnstile (free) for previews: `TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`.
+
 ## Checking it works
 
 | Check | Expected |
@@ -75,6 +98,8 @@ Each research run makes at most `RESEARCH_MAX_AI_CALLS` model calls (default 8; 
 | `/api/health` | `{"ok":true,"mode":…}`, with `auth`, `search` and `ai` true once configured |
 | Create account → dashboard | Badge in the header shows the configured mode |
 | Research “Full name + company” | Workspace shows stages progressing. The profile appears when it completes (with AI) |
+| Language switch (EN / עב) in the header | Whole interface switches; Hebrew is right-to-left |
+| `/pricing` | Four plans; buttons say “Payments not enabled yet” until Paddle is configured |
 
 ## Notes
 

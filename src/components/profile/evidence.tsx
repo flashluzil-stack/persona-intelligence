@@ -14,7 +14,7 @@ import { isSafeExternalHref } from "@/lib/security/url";
  * is rendered with dir="auto" so Hebrew/English mixes display correctly.
  */
 
-export const CONFIDENCE_TONES: Record<ClaimRow["confidenceLabel"], BadgeTone> = {
+const CONFIDENCE_TONES: Record<ClaimRow["confidenceLabel"], BadgeTone> = {
   high: "high",
   moderate: "moderate",
   low: "low",
