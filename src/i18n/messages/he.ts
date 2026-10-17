@@ -29,6 +29,7 @@ const he: Messages = {
     hoursAgo: (n) => `לפני ${n} שע׳`,
     daysAgo: (n) => (n === 1 ? "אתמול" : `לפני ${n} ימים`),
     opensInNewTab: "(פותח את המקור המקורי בלשונית חדשה)",
+    breadcrumb: "נתיב ניווט",
   },
   language: {
     label: "שפה",

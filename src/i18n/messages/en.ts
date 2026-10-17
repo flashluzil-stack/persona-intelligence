@@ -31,6 +31,7 @@ const en = {
     hoursAgo: (n: number) => `${n} h ago`,
     daysAgo: (n: number) => `${n} day${n === 1 ? "" : "s"} ago`,
     opensInNewTab: "(opens the original source in a new tab)",
+    breadcrumb: "Breadcrumb",
   },
   language: {
     label: "Language",

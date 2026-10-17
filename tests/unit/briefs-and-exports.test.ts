@@ -75,7 +75,7 @@ describe("exports", () => {
     expect(text).toContain("<https://brightwater-mobility.example/company/leadership>");
     expect(text).toContain("accessed 2026-10-01");
     expect(text).toContain("High confidence");
-    expect(text).toContain("Insufficient evidence");
+    expect(text).toContain("Too little evidence to conclude");
     expect(text).toMatch(/not a background check/);
     expect(text).toContain("## Research quality");
   });

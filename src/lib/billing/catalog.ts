@@ -49,7 +49,7 @@ const PRICE_ENV: Record<ProductKey, string> = {
 const overrideSchema = z.object({
   currency: z.string().regex(/^[A-Za-z]{3}$/).optional(),
   products: z
-    .record(
+    .partialRecord(
       z.enum(PRODUCT_KEYS),
       z.object({
         amountMinor: z.number().int().positive().optional(),

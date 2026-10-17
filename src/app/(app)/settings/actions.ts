@@ -1,8 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getI18n } from "@/i18n/server";
 import { getAuth } from "@/lib/auth";
-import { settingsSchema } from "@/lib/validation/schemas";
+import { settingsSchema, validationMessage } from "@/lib/validation/schemas";
 
 export interface SettingsState {
   error?: string;
@@ -10,14 +11,15 @@ export interface SettingsState {
 }
 
 export async function saveSettingsAction(_prev: SettingsState, form: FormData): Promise<SettingsState> {
+  const { t } = await getI18n();
   const auth = await getAuth();
-  if (!auth) return { error: "Please sign in again." };
+  if (!auth) return { error: t.errors.signIn };
   const parsed = settingsSchema.safeParse({
     displayName: form.get("displayName") ?? undefined,
     retentionDays: form.get("retentionDays"),
     confirmBeforeResearch: form.get("confirmBeforeResearch") === "on",
   });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid settings." };
+  if (!parsed.success) return { error: parsed.error.issues[0] ? validationMessage(parsed.error.issues[0].message, t) : t.settings.saveFailed };
   const { data: existing } = await auth.supabase.from("user_settings").select("research_preferences").eq("user_id", auth.user.id).maybeSingle();
   const prefs = { ...((existing?.research_preferences as Record<string, unknown>) ?? {}), confirmBeforeResearch: parsed.data.confirmBeforeResearch ?? false };
   const { error } = await auth.supabase.from("user_settings").upsert(
@@ -29,8 +31,8 @@ export async function saveSettingsAction(_prev: SettingsState, form: FormData): 
     },
     { onConflict: "user_id" },
   );
-  if (error) return { error: "Could not save settings." };
+  if (error) return { error: t.settings.saveFailed };
   await auth.supabase.from("audit_events").insert({ user_id: auth.user.id, event_type: "settings.updated", metadata: { retentionDays: parsed.data.retentionDays } });
   revalidatePath("/settings");
-  return { message: "Settings saved." };
+  return { message: t.settings.saved };
 }

@@ -77,7 +77,9 @@ export async function checkResearchQuota(db: SupabaseClient, user: { id: string;
   const activeJobs = active.count ?? 0;
   const base = { usedToday, dailyLimit, activeJobs, concurrentLimit: limits.maxConcurrentJobsPerUser, freeRemaining: null as number | null };
 
-  if (access.paywallEnforced && !subscriber) {
+  // Subscribers and credit holders are not limited by the free allowance (their reports are paid for).
+  const hasCredits = (entitlements?.credits ?? 0) >= access.creditsPerReport;
+  if (access.paywallEnforced && !subscriber && !hasCredits) {
     const guest = Boolean(user.is_anonymous);
     const limit = guest ? access.freePreviewsGuest : access.freePreviewsPer30Days;
     const locked = await lockedReportCount(db, guest ? null : new Date(Date.now() - 30 * 86_400_000).toISOString());

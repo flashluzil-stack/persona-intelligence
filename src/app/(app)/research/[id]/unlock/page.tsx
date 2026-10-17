@@ -36,7 +36,7 @@ export default async function UnlockPage({ params }: PageProps<"/research/[id]/u
 
   return (
     <PageContainer className="space-y-6 py-8">
-      <nav aria-label="Breadcrumb" className="text-sm text-muted">
+      <nav aria-label={t.common.breadcrumb} className="text-sm text-muted">
         <Link href={`/research/${id}`} className="hover:text-ink hover:underline">
           <bdi>{name}</bdi>
         </Link>{" "}

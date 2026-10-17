@@ -69,7 +69,7 @@ export function UnlockOptions(props: UnlockOptionsProps) {
   const buy = (product: ProductKey) =>
     checkout.start(product, { projectId: product === "single_report" ? props.projectId : undefined, next: product === "single_report" ? reportUrl : unlockUrl });
 
-  const BuyButton = ({ product, label, variant = "secondary" }: { product: ProductKey; label: string; variant?: "secondary" | "accent" | "primary" }) => {
+  const buyButton = (product: ProductKey, label: string, variant: "secondary" | "accent" | "primary" = "secondary") => {
     if (props.guest) {
       return (
         <LinkButton href={`/sign-up${authNext}`} size="sm" variant={variant}>
@@ -147,7 +147,7 @@ export function UnlockOptions(props: UnlockOptionsProps) {
             </>
           }
         >
-          <BuyButton product="single_report" label={p.buyReport} variant={hasCredits || sub?.grantsAccess ? "secondary" : "accent"} />
+          {buyButton("single_report", p.buyReport, hasCredits || sub?.grantsAccess ? "secondary" : "accent")}
         </Option>
         <Option
           icon={<Coins className="size-5" />}
@@ -165,8 +165,8 @@ export function UnlockOptions(props: UnlockOptionsProps) {
             </>
           }
         >
-          <BuyButton product="credits_small" label={t.billingPanel.creditsBalance(props.offers.credits_small.credits)} />
-          <BuyButton product="credits_large" label={t.billingPanel.creditsBalance(props.offers.credits_large.credits)} />
+          {buyButton("credits_small", t.billingPanel.creditsBalance(props.offers.credits_small.credits))}
+          {buyButton("credits_large", t.billingPanel.creditsBalance(props.offers.credits_large.credits))}
         </Option>
         <Option
           icon={<CreditCard className="size-5" />}
@@ -181,8 +181,8 @@ export function UnlockOptions(props: UnlockOptionsProps) {
             </>
           }
         >
-          <BuyButton product="monthly" label={pr.monthly} />
-          <BuyButton product="annual" label={pr.yearly} />
+          {buyButton("monthly", pr.monthly)}
+          {buyButton("annual", pr.yearly)}
         </Option>
       </div>
       <p className="text-[12.5px] text-muted">

@@ -34,7 +34,7 @@ export default async function BriefPage({ params }: PageProps<"/research/[id]/br
   return (
     <PageContainer className="max-w-4xl space-y-6 py-8">
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
-        <nav aria-label="Breadcrumb" className="text-sm text-muted">
+        <nav aria-label={t.common.breadcrumb} className="text-sm text-muted">
           <Link href={`/research/${id}`} className="hover:text-ink hover:underline">
             <bdi>{name}</bdi>
           </Link>{" "}

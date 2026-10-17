@@ -83,19 +83,24 @@ export class PaddleClient {
  */
 export function verifyPaddleSignature(rawBody: string, header: string | null, secret: string, nowSeconds = Math.floor(Date.now() / 1000), toleranceSeconds = 300): boolean {
   if (!header) return false;
-  const parts = Object.fromEntries(
-    header.split(";").map((p) => {
-      const i = p.indexOf("=");
-      return [p.slice(0, i).trim(), p.slice(i + 1).trim()];
-    }),
-  );
-  const ts = Number(parts.ts);
-  const h1 = parts.h1;
-  if (!Number.isFinite(ts) || !h1 || !/^[0-9a-f]{64}$/i.test(h1)) return false;
+  let ts = NaN;
+  const signatures: string[] = [];
+  for (const part of header.split(";")) {
+    const i = part.indexOf("=");
+    if (i < 0) continue;
+    const key = part.slice(0, i).trim();
+    const value = part.slice(i + 1).trim();
+    if (key === "ts") ts = Number(value);
+    // Several h1 values can be present while a secret is being rotated.
+    else if (key === "h1" && /^[0-9a-f]{64}$/i.test(value)) signatures.push(value);
+  }
+  if (!Number.isFinite(ts) || signatures.length === 0) return false;
   if (Math.abs(nowSeconds - ts) > toleranceSeconds) return false;
   const expected = createHmac("sha256", secret).update(`${ts}:${rawBody}`).digest();
-  const given = Buffer.from(h1, "hex");
-  return given.length === expected.length && timingSafeEqual(given, expected);
+  return signatures.some((h1) => {
+    const given = Buffer.from(h1, "hex");
+    return given.length === expected.length && timingSafeEqual(given, expected);
+  });
 }
 
 /** Minimal, validated shape of the Paddle events we act on. */
