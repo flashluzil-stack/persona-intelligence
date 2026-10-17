@@ -17,7 +17,6 @@ export interface PricingCardsProps {
   paymentsEnabled: boolean;
   /** "account" = signed in with a permanent account; "guest" or "none" must sign up first. */
   viewer: "account" | "guest" | "none";
-  freePreviewsPerMonth: number;
   subscriberDailyResearch: number;
 }
 

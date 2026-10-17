@@ -55,7 +55,6 @@ export default async function PricingPage() {
         monthlyAsYear={formatMoney(monthly.amountMinor * 12, monthly.currency, locale)}
         paymentsEnabled={cfg.paymentsConfigured}
         viewer={!auth ? "none" : auth.user.is_anonymous ? "guest" : "account"}
-        freePreviewsPerMonth={access.freePreviewsPer30Days}
         subscriberDailyResearch={access.subscriberDailyResearch}
       />
 
