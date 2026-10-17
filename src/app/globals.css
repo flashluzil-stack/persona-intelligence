@@ -1,0 +1,139 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Warm paper background, near-black ink, one restrained accent.
+ * Components use logical properties (ps/pe/ms/me/start/end) so the layout can
+ * mirror for right-to-left languages by setting dir="rtl" on <html>.
+ */
+:root {
+  --paper: #faf8f4;
+  --paper-raised: #ffffff;
+  --paper-sunken: #f3f0ea;
+  --ink: #1c1b18;
+  --ink-soft: #3d3a34;
+  --muted: #6d685f;
+  --faint: #9a958b;
+  --line: #e6e1d7;
+  --line-strong: #d3ccbf;
+  --accent: #2f5d55;
+  --accent-ink: #ffffff;
+  --accent-soft: #e5eeeb;
+  --focus: #2f5d55;
+
+  --high: #2f5d55;
+  --high-soft: #e5eeeb;
+  --moderate: #7a5d1f;
+  --moderate-soft: #f5eddb;
+  --low: #8a4b2c;
+  --low-soft: #f6e7df;
+  --insufficient: #6d685f;
+  --insufficient-soft: #efece6;
+  --danger: #9b2c2c;
+  --danger-soft: #f8e5e3;
+  --demo: #5b3f8a;
+  --demo-soft: #eee8f6;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-raised: var(--paper-raised);
+  --color-paper-sunken: var(--paper-sunken);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-high: var(--high);
+  --color-high-soft: var(--high-soft);
+  --color-moderate: var(--moderate);
+  --color-moderate-soft: var(--moderate-soft);
+  --color-low: var(--low);
+  --color-low-soft: var(--low-soft);
+  --color-insufficient: var(--insufficient);
+  --color-insufficient-soft: var(--insufficient-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-demo: var(--demo);
+  --color-demo-soft: var(--demo-soft);
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Noto Sans Hebrew", sans-serif;
+  --font-serif: "Iowan Old Style", "Charter", "Source Serif Pro", Georgia, "Times New Roman", "Noto Serif Hebrew", serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --shadow-card: 0 1px 2px rgb(28 27 24 / 0.04), 0 1px 1px rgb(28 27 24 / 0.02);
+  --shadow-raised: 0 4px 16px rgb(28 27 24 / 0.06);
+}
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-feature-settings: "kern", "liga";
+  line-height: 1.55;
+}
+
+h1,
+h2,
+h3,
+.font-display {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+a {
+  text-underline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+  .no-print {
+    display: none !important;
+  }
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+  .print-url::after {
+    content: " (" attr(href) ")";
+    font-size: 0.8em;
+    color: #555;
+    word-break: break-all;
+  }
+  @page {
+    margin: 18mm 16mm;
+  }
+}
