@@ -1,5 +1,6 @@
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
+import { OptionalTag } from "./optional-tag";
 
 const control =
   "w-full rounded-md border border-line-strong bg-paper-raised px-3 text-[15px] text-ink placeholder:text-faint transition-colors focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/25 aria-[invalid=true]:border-danger disabled:opacity-60";
@@ -37,7 +38,7 @@ export function Field({
     <div className={cn("space-y-1.5", className)}>
       <label htmlFor={id} className="flex items-baseline gap-2 text-sm font-medium text-ink">
         {label}
-        {optional && <span className="text-xs font-normal text-faint">Optional</span>}
+        {optional && <OptionalTag />}
       </label>
       {children}
       {error ? (

@@ -1,25 +1,29 @@
-import { SECTION_LABELS, type ProfileSectionType } from "@/lib/ai/schemas";
-import { CONFIDENCE_LABELS } from "@/lib/research/evidence";
+import en, { type Messages } from "@/i18n/messages/en";
+import type { ProfileSectionType } from "@/lib/ai/schemas";
 import type { StoredMeetingBrief } from "@/lib/research/meeting";
 import type { StoredInterestTopic, StoredRecentItem, StoredValueItem, VisualStyleContent } from "@/lib/research/profile";
 import type { ClaimRow, QualityReport, SectionRow } from "@/lib/research/store";
-import { SOURCE_TYPE_LABELS, type SourceRecord } from "@/lib/research/types";
+import type { SourceRecord } from "@/lib/research/types";
+import { isPurpose } from "@/lib/validation/schemas";
 import { CitationIndex } from "./citations";
 
 /**
  * Markdown exports. Uncertainty labels, caveats and source links are always
- * included; private notes only when the user explicitly opts in.
+ * included; private notes only when the user explicitly opts in. Labels follow
+ * the viewer's language; source text, names and quotes are never translated.
  */
-
-const DISCLAIMER =
-  "Generated from publicly available sources. It may be incomplete or outdated, and it is not a background check. Verify important facts independently. Do not use for employment, credit, housing or insurance eligibility decisions.";
 
 /** Escapes characters that could turn source-controlled text into Markdown/HTML markup. */
 export function md(text: string | null | undefined): string {
   return (text ?? "").replace(/[\\`*_{}[\]<>#|]/g, (c) => `\\${c}`).replace(/\r?\n/g, " ");
 }
 
-const fmtDate = (d: string | null | undefined) => (d ? d.slice(0, 10) : "date unknown");
+const fmtDate = (d: string | null | undefined, t: Messages = en) => (d ? d.slice(0, 10) : t.exportMd.dateUnknown);
+
+/** Brief objectives are stored as purpose keys (older briefs: English labels). */
+export function objectiveLabel(objective: string, t: Messages = en): string {
+  return isPurpose(objective) ? t.purposes[objective] : objective;
+}
 
 type Cited = { text: string; claim_ids: string[] };
 
@@ -34,7 +38,9 @@ export interface ProfileExportData {
   notes?: Array<{ content: string; sectionType: string | null; createdAt: string }>;
 }
 
-function sectionBody(section: SectionRow, cite: CitationIndex): string[] {
+function sectionBody(section: SectionRow, cite: CitationIndex, t: Messages): string[] {
+  const x = t.exportMd;
+  const S = t.sections;
   const c = section.content as Record<string, unknown>;
   const lines: string[] = [];
   const list = (items: Cited[] | undefined, heading?: string) => {
@@ -44,63 +50,63 @@ function sectionBody(section: SectionRow, cite: CitationIndex): string[] {
     lines.push("");
   };
   if (section.userOverride) {
-    lines.push(`> **Edited by you** (${fmtDate(section.userOverrideAt)}): ${md(section.userOverride)}`, "");
+    lines.push(`> **${x.editedByYou(fmtDate(section.userOverrideAt, t))}**: ${md(section.userOverride)}`, "");
   }
   if (typeof c.summary === "string") lines.push(md(c.summary), "");
 
   switch (section.sectionType) {
     case "overview": {
       const role = c.current_role as Cited | null;
-      lines.push(role ? `**Current role (verified as current):** ${md(role.text)} ${cite.citeClaims(role.claim_ids)}` : "**Current role:** not verified as current.", "");
-      list(c.key_points as Cited[], "Key points");
+      lines.push(role ? `**${x.currentRoleVerified}** ${md(role.text)} ${cite.citeClaims(role.claim_ids)}` : `**${x.currentRoleNot}**`, "");
+      list(c.key_points as Cited[], S.keyPoints);
       break;
     }
     case "background": {
       const positions = (c.positions as Array<{ title: string; organization: string; period: string | null; status: string; claim_ids: string[] }>) ?? [];
       if (positions.length) {
-        lines.push("**Positions**", "");
+        lines.push(`**${x.positions}**`, "");
         for (const p of positions) {
-          lines.push(`- ${md(p.title)}, ${md(p.organization)}${p.period ? ` (${md(p.period)})` : ""} — ${p.status} ${cite.citeClaims(p.claim_ids)}`);
+          lines.push(`- ${md(p.title)}, ${md(p.organization)}${p.period ? ` (${md(p.period)})` : ""} — ${p.status === "current" ? S.currentVerified : p.status === "historical" ? S.historical : S.statusUnknown} ${cite.citeClaims(p.claim_ids)}`);
         }
         lines.push("");
       }
-      list(c.education as Cited[], "Education");
-      list(c.achievements as Cited[], "Achievements");
-      list(c.publications as Cited[], "Publications");
-      list(c.projects as Cited[], "Projects");
+      list(c.education as Cited[], S.education);
+      list(c.achievements as Cited[], S.achievements);
+      list(c.publications as Cited[], S.publications);
+      list(c.projects as Cited[], S.projects);
       break;
     }
     case "interests":
-      for (const t of (c.topics as StoredInterestTopic[]) ?? []) {
+      for (const topic of (c.topics as StoredInterestTopic[]) ?? []) {
         lines.push(
-          `- **${md(t.topic)}** — ${md(t.description)} (${t.recurring ? `recurring: ${t.source_count} sources` : "single mention; not established as recurring"}${t.most_recent_date ? `, most recent ${t.most_recent_date}` : ""}) ${cite.citeSources(t.source_ids)}`,
+          `- **${md(topic.topic)}** — ${md(topic.description)} (${topic.recurring ? x.recurring(topic.source_count) : x.singleMention}${topic.most_recent_date ? `, ${x.mostRecent(topic.most_recent_date)}` : ""}) ${cite.citeSources(topic.source_ids)}`,
         );
       }
       lines.push("");
       break;
     case "communication":
       for (const o of (c.observations as Array<{ dimension: string; observation: string; source_ids: string[] }>) ?? []) {
-        lines.push(`- _${md(o.dimension)}_: ${md(o.observation)} ${cite.citeSources(o.source_ids)}`);
+        lines.push(`- _${md(S.dimensions[o.dimension as keyof typeof S.dimensions] ?? o.dimension)}_: ${md(o.observation)} ${cite.citeSources(o.source_ids)}`);
       }
       lines.push("");
       break;
     case "values":
       for (const v of (c.items as StoredValueItem[]) ?? []) {
-        const body = v.kind === "direct_quote" && v.quote ? `“${md(v.quote)}” (direct quote)` : `${md(v.idea)} (paraphrase)`;
+        const body = v.kind === "direct_quote" && v.quote ? `“${md(v.quote)}” (${x.directQuote})` : `${md(v.idea)} (${x.paraphrase})`;
         lines.push(`- ${body} ${cite.citeSources([v.source_id])}${v.note ? ` — ${md(v.note)}` : ""}`);
       }
       lines.push("");
       break;
     case "relationships":
       for (const r of (c.items as Array<{ counterpart: string; relationship: string; description: string; claim_ids: string[] }>) ?? []) {
-        lines.push(`- ${md(r.counterpart)} — ${r.relationship.replace(/_/g, " ")}: ${md(r.description)} ${cite.citeClaims(r.claim_ids)}`);
+        lines.push(`- ${md(r.counterpart)} — ${S.relationshipTypes[r.relationship as keyof typeof S.relationshipTypes] ?? r.relationship.replace(/_/g, " ")}: ${md(r.description)} ${cite.citeClaims(r.claim_ids)}`);
       }
       lines.push("");
       break;
     case "recent":
       for (const r of (c.items as StoredRecentItem[]) ?? []) {
         lines.push(
-          `- ${md(r.summary)} — published ${fmtDate(r.published_at)}${r.reported_event_date ? `; event date reported as ${md(r.reported_event_date)}` : ""}. Why it may matter: ${md(r.why_it_may_matter)} ${cite.citeSources([r.source_id])}`,
+          `- ${md(r.summary)} — ${x.published(fmtDate(r.published_at, t))}${r.reported_event_date ? `; ${x.eventDate(md(r.reported_event_date))}` : ""}. ${x.whyItMatters} ${md(r.why_it_may_matter)} ${cite.citeSources([r.source_id])}`,
         );
       }
       lines.push("");
@@ -109,43 +115,46 @@ function sectionBody(section: SectionRow, cite: CitationIndex): string[] {
       lines.push(md((c as unknown as VisualStyleContent).reason), "");
       break;
     case "open_questions": {
-      const group = (key: string, label: string) => {
+      const group = (key: keyof typeof S.openQuestions) => {
+        const label = S.openQuestions[key];
         const items = (c[key] as string[]) ?? [];
         if (!items.length) return;
         lines.push(`**${label}**`, "", ...items.map((i) => `- ${md(i)}`), "");
       };
-      group("missing_information", "Missing information");
-      group("conflicting_information", "Conflicting information");
-      group("needs_verification", "Needs independent verification");
-      group("insufficient_evidence_areas", "Insufficient evidence");
-      group("questions_to_ask", "Questions to ask directly");
+      group("missing_information");
+      group("conflicting_information");
+      group("needs_verification");
+      group("insufficient_evidence_areas");
+      group("questions_to_ask");
       break;
     }
   }
   const limitations = c.limitations as string[] | undefined;
-  if (limitations?.length) lines.push("_Limitations:_", ...limitations.map((l) => `- ${md(l)}`), "");
+  if (limitations?.length) lines.push(`_${x.limitations}_`, ...limitations.map((l) => `- ${md(l)}`), "");
   return lines;
 }
 
 const SECTION_ORDER: ProfileSectionType[] = ["overview", "background", "interests", "communication", "visual_style", "values", "relationships", "recent", "open_questions"];
 
-export function bibliographyMarkdown(sources: SourceRecord[], numbered = true): string[] {
+export function bibliographyMarkdown(sources: SourceRecord[], numbered = true, t: Messages = en): string[] {
+  const x = t.exportMd;
   return sources.map((s, i) => {
     const prefix = numbered ? `${i + 1}. ` : "- ";
-    const status =
-      s.retrievalStatus === "retrieved" ? "full page analysed" : s.retrievalStatus === "snippet_only" ? "search snippet only" : `not retrieved (${s.retrievalStatus.replace("_", " ")})`;
-    return `${prefix}${md(s.title ?? s.domain)} — <${s.url}> · ${SOURCE_TYPE_LABELS[s.sourceType]} · published ${fmtDate(s.publishedAt)} · accessed ${fmtDate(s.accessedAt)} · ${status}`;
+    const retrieval = t.explorers.retrieval[s.retrievalStatus as keyof typeof t.explorers.retrieval] ?? s.retrievalStatus;
+    const status = s.retrievalStatus === "retrieved" ? x.fullPage : s.retrievalStatus === "snippet_only" ? x.snippetOnly : x.notRetrieved(retrieval);
+    return `${prefix}${md(s.title ?? s.domain)} — <${s.url}> · ${t.sourceTypes[s.sourceType]} · ${x.published(fmtDate(s.publishedAt, t))} · ${x.accessed(fmtDate(s.accessedAt, t))} · ${status}`;
   });
 }
 
-export function profileMarkdown(data: ProfileExportData, part: "profile" | "report"): string {
+export function profileMarkdown(data: ProfileExportData, part: "profile" | "report", t: Messages = en): string {
+  const x = t.exportMd;
   const cite = new CitationIndex(data.sources, data.claims);
   const out: string[] = [
-    `# ${md(data.personName)} — ${part === "report" ? "Research report" : "Profile summary"}`,
+    `# ${md(data.personName)} — ${part === "report" ? x.researchReport : x.profileSummary}`,
     "",
-    `_Last researched: ${fmtDate(data.lastResearchedAt)}. Exported ${new Date().toISOString().slice(0, 10)} from Persona Intelligence._`,
+    `_${x.lastResearched(fmtDate(data.lastResearchedAt, t), new Date().toISOString().slice(0, 10))}_`,
     "",
-    `> ${DISCLAIMER}`,
+    `> ${x.disclaimer}`,
     "",
   ];
   const sections = new Map(data.sections.map((s) => [s.sectionType, s]));
@@ -153,14 +162,14 @@ export function profileMarkdown(data: ProfileExportData, part: "profile" | "repo
   for (const type of order) {
     const s = sections.get(type);
     if (!s) continue;
-    out.push(`## ${SECTION_LABELS[type]}`, "", ...sectionBody(s, cite));
+    out.push(`## ${t.sectionLabels[type]}`, "", ...sectionBody(s, cite, t));
   }
 
   if (part === "report" && data.claims.length) {
-    out.push("## Evidence register", "");
+    out.push(`## ${t.sections.evidenceTitle}`, "");
     for (const c of data.claims) {
       out.push(
-        `- ${md(c.claimText)} — **${CONFIDENCE_LABELS[c.confidenceLabel]}** (${c.verificationStatus.replace("_", " ")}; ${c.evidenceType.replace("_", " ")}). ${md(c.confidenceRationale)} ${cite.citeClaims([c.id])}${c.limitations ? ` _${md(c.limitations)}_` : ""}`,
+        `- ${md(c.claimText)} — **${t.evidence.confidence[c.confidenceLabel]}** (${t.evidence.verification[c.verificationStatus]}; ${t.evidence.types[c.evidenceType]}). ${md(c.confidenceRationale)} ${cite.citeClaims([c.id])}${c.limitations ? ` _${md(c.limitations)}_` : ""}`,
       );
     }
     out.push("");
@@ -169,14 +178,14 @@ export function profileMarkdown(data: ProfileExportData, part: "profile" | "repo
   if (data.quality) {
     const q = data.quality;
     out.push(
-      "## Research quality",
+      `## ${t.sections.qualityTitle}`,
       "",
-      `- Sources found: ${q.sourcesFound} (${q.sourcesRetrieved} full pages, ${q.sourcesSnippetOnly} snippet only, ${q.sourcesNotPermitted} not permitted/blocked, ${q.sourcesFailed} failed, ${q.sourcesUnrelated} about other people)`,
-      `- Claims: ${q.claimsExtracted} verified, ${q.claimsRejected} discarded as unverifiable`,
-      `- Conflicts: ${q.conflicts.length ? q.conflicts.map((c) => md(c.description)).join("; ") : "none detected"}`,
-      `- Sections with insufficient evidence: ${q.insufficientSections.length ? q.insufficientSections.join(", ") : "none"}`,
+      `- ${x.qualitySources(q.sourcesFound, q.sourcesRetrieved, q.sourcesSnippetOnly, q.sourcesNotPermitted, q.sourcesFailed, q.sourcesUnrelated)}`,
+      `- ${x.qualityClaims(q.claimsExtracted, q.claimsRejected)}`,
+      `- ${x.qualityConflicts(q.conflicts.length ? q.conflicts.map((c) => md(c.description)).join("; ") : x.noneDetected)}`,
+      `- ${x.qualityInsufficient(q.insufficientSections.length ? q.insufficientSections.map((s) => t.sectionLabels[s as ProfileSectionType] ?? s).join(", ") : x.none)}`,
       "",
-      "**Limitations**",
+      `**${t.sections.limitations}**`,
       "",
       ...q.limitations.map((l) => `- ${md(l)}`),
       "",
@@ -184,12 +193,12 @@ export function profileMarkdown(data: ProfileExportData, part: "profile" | "repo
   }
 
   if (data.notes?.length) {
-    out.push("## Private notes (included at your request)", "", "_These are your own notes, not research findings._", "");
-    for (const n of data.notes) out.push(`- ${md(n.content)} _(${fmtDate(n.createdAt)}${n.sectionType ? `, ${n.sectionType}` : ""})_`);
+    out.push(`## ${x.notesTitle}`, "", `_${x.notesNote}_`, "");
+    for (const n of data.notes) out.push(`- ${md(n.content)} _(${fmtDate(n.createdAt, t)}${n.sectionType ? `, ${t.sectionLabels[n.sectionType as ProfileSectionType] ?? n.sectionType}` : ""})_`);
     out.push("");
   }
 
-  out.push("## Sources", "", ...bibliographyMarkdown(cite.bibliography()), "");
+  out.push(`## ${t.report.sources}`, "", ...bibliographyMarkdown(cite.bibliography(), true, t), "");
   return out.join("\n");
 }
 
@@ -200,32 +209,36 @@ export function briefMarkdown(args: {
   brief: StoredMeetingBrief;
   claims: ClaimRow[];
   sources: SourceRecord[];
+  t?: Messages;
 }): string {
+  const t = args.t ?? en;
+  const x = t.exportMd;
+  const B = t.brief.blocks;
   const cite = new CitationIndex(args.sources, args.claims);
   const b = args.brief;
   const out = [
-    `# Meeting brief: ${md(args.personName)}`,
+    `# ${x.briefTitle(md(args.personName))}`,
     "",
-    `_Objective: ${md(args.objective)} · Generated ${fmtDate(args.createdAt)}_`,
+    `_${x.briefMeta(md(objectiveLabel(args.objective, t)), fmtDate(args.createdAt, t))}_`,
     "",
-    `> ${DISCLAIMER} You remain responsible for any decision.`,
+    `> ${x.disclaimer} ${x.responsibility}`,
     "",
   ];
   if (b.evidence_note) out.push(`> ${md(b.evidence_note)}`, "");
-  out.push("## Executive summary", "", md(b.executive_summary), "");
+  out.push(`## ${x.executiveSummary}`, "", md(b.executive_summary), "");
   const block = (title: string, items: string[]) => {
     if (!items.length) return;
     out.push(`## ${title}`, "", ...items, "");
   };
-  block("Key evidence-backed facts", b.key_facts.map((f) => `- ${md(f.fact)} ${cite.citeClaims(f.claim_ids)}`));
-  block("Conversation topics", b.conversation_topics.map((t) => `- **${md(t.topic)}** — ${md(t.rationale)} ${cite.citeClaims(t.claim_ids)}`));
-  block("Suggested questions", b.questions.map((q) => `- ${md(q.question)} _(${md(q.rationale)})_ ${cite.citeClaims(q.claim_ids)}`));
-  block("Potential professional overlap", b.professional_overlap.map((p) => `- ${md(p.point)} ${cite.citeClaims(p.claim_ids)}`));
-  block("Relevant recent developments", b.recent_developments.map((r) => `- ${md(r.summary)} ${cite.citeClaims(r.claim_ids)}`));
-  block("Unknowns to clarify", b.unknowns_to_clarify.map((u) => `- ${md(u)}`));
-  block("Documented business risks", b.documented_risks.map((r) => `- ${md(r.risk)} ${cite.citeClaims(r.claim_ids)}`));
-  out.push("## Suggested opening", "", md(b.suggested_opening), "");
-  block("Pre-meeting checklist", b.checklist.map((c) => `- [ ] ${md(c)}`));
-  out.push("## Sources", "", ...bibliographyMarkdown(cite.bibliography()), "");
+  block(B.facts, b.key_facts.map((f) => `- ${md(f.fact)} ${cite.citeClaims(f.claim_ids)}`));
+  block(B.topics, b.conversation_topics.map((c) => `- **${md(c.topic)}** — ${md(c.rationale)} ${cite.citeClaims(c.claim_ids)}`));
+  block(B.questions, b.questions.map((q) => `- ${md(q.question)} _(${md(q.rationale)})_ ${cite.citeClaims(q.claim_ids)}`));
+  block(B.overlap, b.professional_overlap.map((p) => `- ${md(p.point)} ${cite.citeClaims(p.claim_ids)}`));
+  block(B.recent, b.recent_developments.map((r) => `- ${md(r.summary)} ${cite.citeClaims(r.claim_ids)}`));
+  block(B.unknowns, b.unknowns_to_clarify.map((u) => `- ${md(u)}`));
+  block(B.risks, b.documented_risks.map((r) => `- ${md(r.risk)} ${cite.citeClaims(r.claim_ids)}`));
+  out.push(`## ${B.opening}`, "", md(b.suggested_opening), "");
+  block(B.checklist, b.checklist.map((c) => `- [ ] ${md(c)}`));
+  out.push(`## ${t.report.sources}`, "", ...bibliographyMarkdown(cite.bibliography(), true, t), "");
   return out.join("\n");
 }

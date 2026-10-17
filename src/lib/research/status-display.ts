@@ -2,7 +2,6 @@ import type { Messages } from "@/i18n/messages";
 import type { JobError } from "./store";
 import type { JobStatus } from "./types";
 
-/** Display labels for job/project statuses. Shared by server and client components. */
 /** Badge tones per status; labels come from the dictionaries (t.jobStatus). */
 export const JOB_STATUS_DISPLAY: Record<JobStatus, { tone: "neutral" | "accent" | "moderate" | "danger" | "high" }> = {
   queued: { tone: "neutral" },

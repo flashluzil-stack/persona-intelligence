@@ -22,6 +22,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
     brief: bundle.brief.brief,
     claims: bundle.claims,
     sources: bundle.sources,
+    t: g.t,
   });
   return new Response(body, {
     headers: {

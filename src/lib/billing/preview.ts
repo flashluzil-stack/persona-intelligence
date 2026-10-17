@@ -30,6 +30,8 @@ export interface LockedCard {
 export interface PreviewData {
   overview: SectionRow | null;
   findings: ClaimRow[];
+  /** Every claim cited by the visible overview or findings (needed to render their citations). */
+  claims: ClaimRow[];
   sources: SourceRecord[];
   quality: Pick<QualityReport, "sourcesFound" | "claimsExtracted" | "claimsByConfidence" | "limitations"> | null;
   locked: LockedCard[];
@@ -123,6 +125,7 @@ export function buildPreview(
   return {
     overview,
     findings,
+    claims: visibleClaims,
     sources,
     quality: args.quality
       ? { sourcesFound: args.quality.sourcesFound, claimsExtracted: args.quality.claimsExtracted, claimsByConfidence: args.quality.claimsByConfidence, limitations: args.quality.limitations }

@@ -29,7 +29,13 @@ export async function GET(request: NextRequest, { params }: Ctx) {
   let body: string;
   if (part === "bibliography") {
     const relevant = bundle.sources.filter((s) => s.relevance !== "unrelated");
-    body = [`# Sources: ${personName}`, "", `_Accessed via Persona Intelligence. Last researched ${bundle.project.lastResearchedAt?.slice(0, 10) ?? "—"}._`, "", ...bibliographyMarkdown(relevant)].join("\n");
+    body = [
+      `# ${g.t.exportMd.sourcesFor(personName)}`,
+      "",
+      `_${g.t.exportMd.accessedVia(bundle.project.lastResearchedAt?.slice(0, 10) ?? "—")}_`,
+      "",
+      ...bibliographyMarkdown(relevant, true, g.t),
+    ].join("\n");
   } else {
     body = profileMarkdown(
       {
@@ -43,6 +49,7 @@ export async function GET(request: NextRequest, { params }: Ctx) {
         notes: includeNotes ? bundle.notes : undefined,
       },
       part as "profile" | "report",
+      g.t,
     );
   }
   await g.auth.supabase.from("audit_events").insert({ user_id: g.auth.user.id, event_type: "export.profile", metadata: { projectId: id, part, includeNotes } });

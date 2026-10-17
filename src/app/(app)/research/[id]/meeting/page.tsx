@@ -4,65 +4,72 @@ import { notFound } from "next/navigation";
 import { BriefForm } from "@/components/brief/brief-form";
 import { PageContainer } from "@/components/layout/site-chrome";
 import { Card, CardHeader, EmptyState, Notice } from "@/components/ui/primitives";
+import { formatDateTime } from "@/i18n/format";
+import { getI18n } from "@/i18n/server";
 import { requireAuth } from "@/lib/auth";
+import { requireUnlockedReport } from "@/lib/billing/gate";
 import { getPublicConfig } from "@/lib/config";
 import { loadProjectBundle } from "@/lib/db/queries";
+import { objectiveLabel } from "@/lib/export/markdown";
 import { uuidSchema } from "@/lib/validation/schemas";
-import { formatDateTime } from "@/lib/utils/format";
 
-export const metadata: Metadata = { title: "Meeting preparation" };
+export async function generateMetadata(): Promise<Metadata> {
+  const { t } = await getI18n();
+  return { title: t.meeting.breadcrumb };
+}
 
 export default async function MeetingPage({ params }: PageProps<"/research/[id]/meeting">) {
   const { id } = await params;
   if (!uuidSchema.safeParse(id).success) notFound();
   const { supabase } = await requireAuth(`/research/${id}/meeting`);
+  const { t, locale } = await getI18n();
   const bundle = await loadProjectBundle(supabase, id);
   if (!bundle) notFound();
+  await requireUnlockedReport(supabase, id);
   const cfg = getPublicConfig();
   const ready = ["completed", "partial"].includes(bundle.project.status) || bundle.claims.length > 0;
   const name = bundle.person?.displayName ?? bundle.project.input.fullName;
+  const m = t.meeting;
 
   return (
     <PageContainer className="space-y-6 py-8">
       <nav aria-label="Breadcrumb" className="text-sm text-muted">
         <Link href={`/research/${id}`} className="hover:text-ink hover:underline">
-          {name}
+          <bdi>{name}</bdi>
         </Link>{" "}
-        / Meeting preparation
+        / {m.breadcrumb}
       </nav>
-      <h1 className="text-3xl font-semibold">Prepare for your meeting with {name}</h1>
+      <h1 className="text-3xl font-semibold">{m.title(name)}</h1>
 
       {!cfg.analysisConfigured && (
-        <Notice tone="warning" title="AI analysis is not configured">
-          Meeting briefs need <code>OPENAI_API_KEY</code>. Nothing will be generated or simulated without it.
+        <Notice tone="warning" title={m.aiMissingTitle}>
+          {m.aiMissingBody}
         </Notice>
       )}
-      {!ready && <Notice tone="info">Finish the research first. Briefs are built only from verified claims.</Notice>}
-      {ready && bundle.claims.length === 0 && (
-        <Notice tone="warning">No verified claims are available for this person, so the brief will contain general preparation guidance only.</Notice>
-      )}
+      {!ready && <Notice tone="info">{m.notReady}</Notice>}
+      {ready && bundle.claims.length === 0 && <Notice tone="warning">{m.noClaims}</Notice>}
 
       <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-        <Card>
-          <CardHeader title="New meeting brief" description="Tell us about the meeting. The brief adapts to your objective and cites its evidence." />
+        <Card className="min-w-0">
+          <CardHeader title={m.newTitle} description={m.newBody} />
           <div className="p-5">
             <BriefForm projectId={id} defaultObjective={bundle.project.input.purpose} enabled={cfg.analysisConfigured && ready} />
           </div>
         </Card>
-        <Card>
-          <CardHeader title="Saved briefs" />
+        <Card className="min-w-0">
+          <CardHeader title={m.saved} />
           {bundle.briefs.length === 0 ? (
             <div className="p-5">
-              <EmptyState title="No briefs yet">Generated briefs are saved here.</EmptyState>
+              <EmptyState title={m.noBriefsTitle}>{m.noBriefsBody}</EmptyState>
             </div>
           ) : (
             <ul className="divide-y divide-line">
               {bundle.briefs.map((b) => (
                 <li key={b.id} className="px-5 py-3">
                   <Link href={`/research/${id}/briefs/${b.id}`} className="font-medium hover:underline">
-                    {b.objective}
+                    {objectiveLabel(b.objective, t)}
                   </Link>
-                  <p className="text-[13px] text-muted">{formatDateTime(b.createdAt)}</p>
+                  <p className="text-[13px] text-muted">{formatDateTime(b.createdAt, locale)}</p>
                 </li>
               ))}
             </ul>

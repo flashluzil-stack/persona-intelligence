@@ -1,12 +1,15 @@
+"use client";
+
 import { CheckSquare } from "lucide-react";
 import type { ReactNode } from "react";
 import { CitationChips, ExternalSourceLink, SourceMeta } from "@/components/profile/evidence";
-import { sourceNumbers } from "@/components/profile/profile-view";
 import { Card, Notice } from "@/components/ui/primitives";
 import type { StoredMeetingBrief } from "@/lib/research/meeting";
 import type { ClaimRow } from "@/lib/research/store";
 import type { SourceRecord } from "@/lib/research/types";
-import { formatDateTime } from "@/lib/utils/format";
+import { formatDateTime } from "@/i18n/format";
+import { useI18n } from "@/i18n/provider";
+import { sourceNumbers } from "@/lib/research/numbering";
 
 function Block({ title, children, n }: { title: string; children: ReactNode; n: number }) {
   return (
@@ -36,6 +39,8 @@ export function BriefView({
   claims: ClaimRow[];
   sources: SourceRecord[];
 }) {
+  const { t, locale } = useI18n();
+  const b = t.brief;
   const claimsById = new Map(claims.map((c) => [c.id, c]));
   const sourcesById = new Map(sources.map((s) => [s.id, s]));
   const cited = (ids: string[]) => {
@@ -60,9 +65,9 @@ export function BriefView({
   return (
     <Card className="space-y-6 p-6 sm:p-8">
       <header className="space-y-2">
-        <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">Meeting brief · {objective}</p>
+        <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted">{b.label(objective)}</p>
         <h1 className="text-3xl font-semibold leading-tight">{personName}</h1>
-        <p className="text-[13px] text-muted">Generated {formatDateTime(createdAt)}. You remain responsible for any decisions.</p>
+        <p className="text-[13px] text-muted">{b.generated(formatDateTime(createdAt, locale))}</p>
       </header>
       {brief.evidence_note && <Notice tone="warning">{brief.evidence_note}</Notice>}
 
@@ -70,7 +75,7 @@ export function BriefView({
         <p className="font-display text-[19px] leading-relaxed text-ink">{brief.executive_summary}</p>
       </section>
 
-      <Block n={1} title="Key evidence-backed facts">
+      <Block n={1} title={b.blocks.facts}>
         <ul className="space-y-2">
           {brief.key_facts.map((f, i) => (
             <li key={i} className="text-[15px]">
@@ -78,25 +83,25 @@ export function BriefView({
               <Cite ids={f.claim_ids} />
             </li>
           ))}
-          {brief.key_facts.length === 0 && <li className="text-sm text-muted">No sufficiently supported facts were available.</li>}
+          {brief.key_facts.length === 0 && <li className="text-sm text-muted">{b.noFacts}</li>}
         </ul>
       </Block>
 
-      <Block n={2} title="Conversation topics">
+      <Block n={2} title={b.blocks.topics}>
         <ul className="space-y-3">
-          {brief.conversation_topics.map((t, i) => (
+          {brief.conversation_topics.map((topic, i) => (
             <li key={i}>
               <p className="text-[15px] font-medium">
-                {t.topic}
-                <Cite ids={t.claim_ids} />
+                {topic.topic}
+                <Cite ids={topic.claim_ids} />
               </p>
-              <p className="text-[14px] text-ink-soft">{t.rationale}</p>
+              <p className="text-[14px] text-ink-soft">{topic.rationale}</p>
             </li>
           ))}
         </ul>
       </Block>
 
-      <Block n={3} title="Suggested questions">
+      <Block n={3} title={b.blocks.questions}>
         <ol className="list-decimal space-y-2 ps-5">
           {brief.questions.map((q, i) => (
             <li key={i} className="text-[15px]">
@@ -108,7 +113,7 @@ export function BriefView({
         </ol>
       </Block>
 
-      <Block n={4} title="Potential professional overlap">
+      <Block n={4} title={b.blocks.overlap}>
         <ul className="list-disc space-y-1.5 ps-5">
           {brief.professional_overlap.map((p, i) => (
             <li key={i} className="text-[15px]">
@@ -116,11 +121,11 @@ export function BriefView({
               <Cite ids={p.claim_ids} />
             </li>
           ))}
-          {brief.professional_overlap.length === 0 && <li className="list-none text-sm text-muted">None identified from the available evidence.</li>}
+          {brief.professional_overlap.length === 0 && <li className="list-none text-sm text-muted">{b.noOverlap}</li>}
         </ul>
       </Block>
 
-      <Block n={5} title="Relevant recent developments">
+      <Block n={5} title={b.blocks.recent}>
         <ul className="list-disc space-y-1.5 ps-5">
           {brief.recent_developments.map((r, i) => (
             <li key={i} className="text-[15px]">
@@ -128,11 +133,11 @@ export function BriefView({
               <Cite ids={r.claim_ids} />
             </li>
           ))}
-          {brief.recent_developments.length === 0 && <li className="list-none text-sm text-muted">No dated recent developments were found.</li>}
+          {brief.recent_developments.length === 0 && <li className="list-none text-sm text-muted">{b.noRecent}</li>}
         </ul>
       </Block>
 
-      <Block n={6} title="Important unknowns to clarify">
+      <Block n={6} title={b.blocks.unknowns}>
         <ul className="list-disc space-y-1.5 ps-5 text-[15px]">
           {brief.unknowns_to_clarify.map((u, i) => (
             <li key={i}>{u}</li>
@@ -140,7 +145,7 @@ export function BriefView({
         </ul>
       </Block>
 
-      <Block n={7} title="Documented business risks">
+      <Block n={7} title={b.blocks.risks}>
         {brief.documented_risks.length ? (
           <ul className="list-disc space-y-1.5 ps-5">
             {brief.documented_risks.map((r, i) => (
@@ -151,15 +156,15 @@ export function BriefView({
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted">No business risks are supported by documented evidence. This is not an assessment of the person.</p>
+          <p className="text-sm text-muted">{b.noRisks}</p>
         )}
       </Block>
 
-      <Block n={8} title="Suggested opening">
+      <Block n={8} title={b.blocks.opening}>
         <p className="border-s-2 border-accent ps-4 text-[15.5px] italic text-ink">{brief.suggested_opening}</p>
       </Block>
 
-      <Block n={9} title="Pre-meeting checklist">
+      <Block n={9} title={b.blocks.checklist}>
         <ul className="space-y-1.5">
           {brief.checklist.map((c, i) => (
             <li key={i} className="flex gap-2 text-[15px]">
@@ -170,9 +175,9 @@ export function BriefView({
         </ul>
       </Block>
 
-      <Block n={10} title="Sources for material claims">
+      <Block n={10} title={b.blocks.sources}>
         <ol className="space-y-2">
-          {[...numbers.entries()].map(([id, n]) => {
+          {Object.entries(numbers).sort((x, y) => x[1] - y[1]).map(([id, n]) => {
             const s = sourcesById.get(id)!;
             return (
               <li key={id} className="flex gap-3 text-[14px]">
@@ -186,7 +191,7 @@ export function BriefView({
               </li>
             );
           })}
-          {numbers.size === 0 && <li className="text-sm text-muted">No sources cited.</li>}
+          {Object.keys(numbers).length === 0 && <li className="text-sm text-muted">{b.noSources}</li>}
         </ol>
       </Block>
     </Card>

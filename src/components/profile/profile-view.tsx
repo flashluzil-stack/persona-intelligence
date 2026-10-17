@@ -1,6 +1,6 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Lock, Search } from "lucide-react";
 import Link from "next/link";
 import { QualitySummary } from "@/components/research/quality-summary";
 import { Card, EmptyState, Notice } from "@/components/ui/primitives";
@@ -38,7 +38,18 @@ export interface ProfileViewData {
   quality: QualityReport | null;
 }
 
-export function ProfileTabs({ base, active, extraTabs = [] }: { base: string; active: string; extraTabs?: Array<{ id: string; label: string }> }) {
+export function ProfileTabs({
+  base,
+  active,
+  extraTabs = [],
+  locked = false,
+}: {
+  base: string;
+  active: string;
+  extraTabs?: Array<{ id: string; label: string }>;
+  /** Free preview: every tab except overview, workspace and notes shows a lock. */
+  locked?: boolean;
+}) {
   const { t } = useI18n();
   const tabs = [
     ...extraTabs.filter((x) => x.id === "workspace"),
@@ -58,6 +69,7 @@ export function ProfileTabs({ base, active, extraTabs = [] }: { base: string; ac
                 active === tab.id ? "border-ink font-medium text-ink" : "border-transparent text-muted hover:text-ink",
               )}
             >
+              {locked && !["overview", "workspace", "notes"].includes(tab.id) && <Lock className="me-1 inline size-3 align-[-1px] text-faint" aria-hidden />}
               {tab.label}
             </Link>
           </li>
