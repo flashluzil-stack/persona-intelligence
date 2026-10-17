@@ -893,6 +893,13 @@ const en = {
     guestTitle: "Guest session",
     guestBody: "Create an account to keep your reports and manage purchases.",
   },
+  errorPage: {
+    title: "Something went wrong",
+    body: "This page could not be loaded. Your data is safe. Please try again in a moment.",
+    retry: "Try again",
+    home: "Go to the home page",
+    reference: "Reference:",
+  },
   notFound: {
     title: "Not found",
     body: "This page does not exist, or it belongs to another account.",
