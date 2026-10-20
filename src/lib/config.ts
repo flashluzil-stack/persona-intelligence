@@ -76,17 +76,25 @@ export function getSupabaseConfig(): { url: string; anonKey: string } | null {
   return { url, anonKey };
 }
 
+/**
+ * Configured search providers in priority order. SEARCH_PROVIDER may be
+ * "auto" (Brave, then Tavily), one provider name, or a comma-separated order
+ * such as "tavily,brave". Every configured provider is available for failover.
+ */
+export function getSearchProviderConfigs(): Array<{ id: SearchProviderId; apiKey: string }> {
+  const keys: Record<SearchProviderId, string | undefined> = { brave: process.env.BRAVE_SEARCH_API_KEY, tavily: process.env.TAVILY_API_KEY };
+  const preferred = (process.env.SEARCH_PROVIDER ?? "auto")
+    .toLowerCase()
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is SearchProviderId => s === "brave" || s === "tavily");
+  const order = [...new Set<SearchProviderId>([...preferred, "brave", "tavily"])];
+  return order.filter((id) => keys[id]).map((id) => ({ id, apiKey: keys[id]! }));
+}
+
+/** The primary (first) configured search provider, or null. */
 export function getSearchProviderConfig(): { id: SearchProviderId; apiKey: string } | null {
-  const preferred = process.env.SEARCH_PROVIDER?.toLowerCase();
-  const brave = process.env.BRAVE_SEARCH_API_KEY;
-  const tavily = process.env.TAVILY_API_KEY;
-  if (preferred === "tavily" && tavily) return { id: "tavily", apiKey: tavily };
-  if (preferred === "brave" && brave) return { id: "brave", apiKey: brave };
-  if (!preferred || preferred === "auto") {
-    if (brave) return { id: "brave", apiKey: brave };
-    if (tavily) return { id: "tavily", apiKey: tavily };
-  }
-  return null;
+  return getSearchProviderConfigs()[0] ?? null;
 }
 
 export function getAnalysisProviderConfig(): { apiKey: string; model: string; baseUrl: string } | null {
@@ -106,6 +114,8 @@ export interface PublicConfig {
   authConfigured: boolean;
   searchConfigured: boolean;
   searchProvider: SearchProviderId | null;
+  /** All configured search providers, in priority order. */
+  searchProviders: SearchProviderId[];
   analysisConfigured: boolean;
   analysisModel: string | null;
   pageRetrievalEnabled: boolean;
@@ -124,6 +134,7 @@ export function getPublicConfig(): PublicConfig {
     authConfigured: getSupabaseConfig() !== null,
     searchConfigured: search !== null,
     searchProvider: search?.id ?? null,
+    searchProviders: getSearchProviderConfigs().map((c) => c.id),
     analysisConfigured: analysis !== null,
     analysisModel: analysis?.model ?? null,
     pageRetrievalEnabled: process.env.RESEARCH_DISABLE_PAGE_FETCH !== "true",

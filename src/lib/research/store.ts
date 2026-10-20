@@ -3,9 +3,11 @@ import type { ResearchInput } from "@/lib/validation/schemas";
 import type { ConfidenceLabel, VerificationStatus } from "./evidence";
 import type {
   JobStatus,
+  ProviderRunReport,
   Relevance,
   ResearchStage,
   RetrievalStatus,
+  SourceCategoryStatus,
   SourceCredibility,
   SourceRecord,
   SourceType,
@@ -82,6 +84,10 @@ export interface QualityReport {
   limitations: string[];
   unavailableProviders: string[];
   reliesOnSnippetsOnly: boolean;
+  /** Per provider and category (absent on reports created before this was recorded). */
+  providers?: ProviderRunReport[];
+  /** Coverage by source category (absent on older reports). */
+  categories?: SourceCategoryStatus[];
 }
 
 export interface UsageTotals {

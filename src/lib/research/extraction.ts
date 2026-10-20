@@ -79,7 +79,9 @@ export function verifyExtraction(
         supportStrength: e.support_strength,
         notes: source.retrievalStatus === "retrieved" ? null : m.claims.snippetOnly,
       });
-      assessments.push({ domain: source.domain, credibility, strength: e.support_strength, relationship: e.relationship });
+      // Syndicated copies share their original's key, so they never count as independent corroboration.
+      const independenceKey = typeof source.metadata?.independenceKey === "string" ? source.metadata.independenceKey : source.domain;
+      assessments.push({ domain: independenceKey, credibility, strength: e.support_strength, relationship: e.relationship });
       if (source.publishedAt) dates.push(source.publishedAt);
     }
     if (evidence.length === 0) {

@@ -1,23 +1,30 @@
-import { getResearchLimits, getSearchProviderConfig } from "@/lib/config";
+import { getResearchLimits, getSearchProviderConfigs } from "@/lib/config";
 import { classifySource, type ClassificationContext } from "@/lib/research/classify";
 import type { SearchHit, SearchProvider, SearchResult } from "@/lib/research/types";
 import { domainOf, normalizeUrl } from "@/lib/security/url";
 import { BraveSearchProvider } from "./brave";
+import { SearchRouter } from "./router";
 import { TavilySearchProvider } from "./tavily";
 
-/** Returns the configured live search provider, or null when none is configured. */
-export function createSearchProvider(): SearchProvider | null {
-  const cfg = getSearchProviderConfig();
-  if (!cfg) return null;
+/** Creates every configured live search provider, in priority order (empty when none is configured). */
+export function createSearchProviders(): SearchProvider[] {
   const limits = getResearchLimits();
   const opts = { retries: limits.maxRetries, timeoutMs: limits.providerTimeoutMs };
-  switch (cfg.id) {
-    case "brave":
-      return new BraveSearchProvider(cfg.apiKey, opts);
-    case "tavily":
-      // Optional base URL for an API gateway/proxy in front of Tavily.
-      return new TavilySearchProvider(cfg.apiKey, { ...opts, baseUrl: process.env.TAVILY_API_BASE_URL?.replace(/\/$/, "") || undefined });
-  }
+  return getSearchProviderConfigs().map((cfg) => {
+    switch (cfg.id) {
+      case "brave":
+        return new BraveSearchProvider(cfg.apiKey, opts);
+      case "tavily":
+        // Optional base URL for an API gateway/proxy in front of Tavily.
+        return new TavilySearchProvider(cfg.apiKey, { ...opts, baseUrl: process.env.TAVILY_API_BASE_URL?.replace(/\/$/, "") || undefined });
+    }
+  });
+}
+
+/** A router over all configured providers, or null when none is configured. */
+export function createSearchRouter(): SearchRouter | null {
+  const providers = createSearchProviders();
+  return providers.length ? new SearchRouter(providers) : null;
 }
 
 function normalizeDate(value: string | null): string | null {

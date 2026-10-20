@@ -96,3 +96,46 @@ export function dedupeResults(
     stats: { input: results.length, exactDuplicates, nearDuplicates, trimmed: unique.length - kept.length },
   };
 }
+
+/** A source with enough text to compare for syndication. */
+export interface SyndicationCandidate {
+  id: string;
+  domain: string;
+  publishedAt: string | null;
+  credibilityRank: number;
+  text: string;
+}
+
+export interface SyndicatedCopy {
+  sourceId: string;
+  /** The source treated as the original. */
+  originalId: string;
+  /** Independence key shared by the copy and its original (the original's domain). */
+  independenceKey: string;
+}
+
+const MIN_COMPARABLE_CHARS = 200;
+
+/**
+ * Detects syndicated or republished copies AFTER retrieval, by comparing the
+ * article text (not just search snippets). Copies of one article on different
+ * sites must not count as independent corroboration. The original is the
+ * earliest-dated, most authoritative copy.
+ */
+export function detectSyndication(candidates: SyndicationCandidate[], threshold = 0.6): SyndicatedCopy[] {
+  const comparable = candidates
+    .filter((c) => c.text.length >= MIN_COMPARABLE_CHARS)
+    .map((c) => ({ ...c, sig: shingles(c.text.slice(0, 6000), 5) }))
+    .sort(
+      (a, b) =>
+        (a.publishedAt ?? "9999").localeCompare(b.publishedAt ?? "9999") || a.credibilityRank - b.credibilityRank || a.id.localeCompare(b.id),
+    );
+  const originals: typeof comparable = [];
+  const copies: SyndicatedCopy[] = [];
+  for (const c of comparable) {
+    const original = originals.find((o) => o.domain !== c.domain && jaccard(o.sig, c.sig) >= threshold);
+    if (original) copies.push({ sourceId: c.id, originalId: original.id, independenceKey: original.domain });
+    else originals.push(c);
+  }
+  return copies;
+}

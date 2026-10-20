@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { errorFromStatus, withRetries } from "@/lib/providers/http";
-import { ProviderError, type SearchHit, type SearchOptions, type SearchProvider } from "@/lib/research/types";
+import { ProviderError, type SearchCategory, type SearchHit, type SearchOptions, type SearchProvider } from "@/lib/research/types";
 
 const tavilyResponseSchema = z.object({
   results: z
@@ -15,14 +15,15 @@ const tavilyResponseSchema = z.object({
     .default([]),
 });
 
-/** Tavily Search API: https://docs.tavily.com */
+/** Tavily Search API (general and news topics): https://docs.tavily.com */
 export class TavilySearchProvider implements SearchProvider {
   readonly id = "tavily";
   readonly label = "Tavily";
+  readonly categories: readonly SearchCategory[] = ["web", "news"];
 
   constructor(
     private readonly apiKey: string,
-    private readonly opts: { retries: number; timeoutMs: number; fetchImpl?: typeof fetch; baseUrl?: string },
+    private readonly opts: { retries: number; timeoutMs: number; fetchImpl?: typeof fetch; baseUrl?: string; baseDelayMs?: number },
   ) {}
 
   async search(query: string, options: SearchOptions): Promise<SearchHit[]> {
@@ -36,6 +37,7 @@ export class TavilySearchProvider implements SearchProvider {
             query,
             max_results: Math.min(20, options.count),
             search_depth: "basic",
+            topic: options.category === "news" ? "news" : "general",
             include_answer: false,
             include_raw_content: false,
             include_images: false,
@@ -45,7 +47,7 @@ export class TavilySearchProvider implements SearchProvider {
         if (!res.ok) throw errorFromStatus(this.label, res.status);
         return res.json();
       },
-      { retries: this.opts.retries, timeoutMs: this.opts.timeoutMs, provider: this.label, signal: options.signal },
+      { retries: this.opts.retries, timeoutMs: this.opts.timeoutMs, provider: this.label, signal: options.signal, onRetry: options.onRetry, baseDelayMs: this.opts.baseDelayMs },
     );
     const parsed = tavilyResponseSchema.safeParse(json);
     if (!parsed.success) throw new ProviderError(this.label, "bad_response", "Unexpected response format");

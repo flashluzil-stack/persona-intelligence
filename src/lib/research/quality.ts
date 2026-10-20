@@ -2,7 +2,7 @@ import { SECTION_LABELS, type ProfileSectionType } from "@/lib/ai/schemas";
 import type { ConfidenceLabel } from "./evidence";
 import type { ClaimRow, QualityReport } from "./store";
 import en from "@/i18n/messages/en";
-import type { EngineMessages, SourceRecord } from "./types";
+import type { EngineMessages, ProviderRunReport, SourceCategoryStatus, SourceRecord } from "./types";
 
 /**
  * Research quality summary. Deliberately a set of counts and plain-language
@@ -21,6 +21,8 @@ export function buildQualityReport(args: {
   profileGenerated: boolean;
   messages?: EngineMessages;
   sectionLabels?: Record<string, string>;
+  providers?: ProviderRunReport[];
+  categories?: SourceCategoryStatus[];
 }): QualityReport {
   const m = (args.messages ?? en.engine).quality;
   const labels = args.sectionLabels ?? SECTION_LABELS;
@@ -72,5 +74,7 @@ export function buildQualityReport(args: {
     limitations,
     unavailableProviders: args.unavailableProviders,
     reliesOnSnippetsOnly: relevant.length > 0 && retrieved === 0,
+    providers: args.providers ?? [],
+    categories: args.categories ?? [],
   };
 }

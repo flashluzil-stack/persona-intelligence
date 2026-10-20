@@ -2,14 +2,16 @@ import { GENERATED_SECTION_TYPES } from "@/lib/ai/schemas";
 import type { ResearchLimits } from "@/lib/config";
 import type { StructuredModel } from "@/lib/providers/analysis/openai";
 import { normalizeHits } from "@/lib/providers/search";
+import { SearchRouter } from "@/lib/providers/search/router";
 import { researchInputSchema, type ResearchInput } from "@/lib/validation/schemas";
-import { isAutomatedRetrievalRestricted } from "./classify";
-import { dedupeResults } from "./dedupe";
+import { classifySource, isAutomatedRetrievalRestricted, sourceCredibility } from "./classify";
+import { domainOf, normalizeUrl } from "@/lib/security/url";
+import { dedupeResults, detectSyndication } from "./dedupe";
 import { extractClaims } from "./extraction";
 import { resolveIdentityHeuristically, resolveIdentityWithAI } from "./identity";
 import { generateProfileSections, visualStyleUnavailable } from "./profile";
 import { getMessages } from "@/i18n/messages";
-import { buildQueryPlan } from "./queries";
+import { buildQueryPlan, type PlannedQuery } from "./queries";
 import { buildQualityReport } from "./quality";
 import type { ClaimRow, IdentityState, JobError, JobRow, NewSource, ProjectRow, ResearchStore, UsageTotals } from "./store";
 import {
@@ -18,6 +20,7 @@ import {
   type ResearchStage,
   type SearchProvider,
   type SearchResult,
+  type SourceCategoryStatus,
   type SourceRecord,
   type StageLogEntry,
   type UsageRecord,
@@ -25,7 +28,8 @@ import {
 
 export interface PipelineDeps {
   store: ResearchStore;
-  search: SearchProvider | null;
+  /** One provider, several (priority order, with failover), or a prepared router. */
+  search: SearchRouter | SearchProvider | SearchProvider[] | null;
   content: ContentProvider | null;
   model: StructuredModel | null;
   limits: ResearchLimits;
@@ -57,6 +61,12 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
   const language = project.input.locale === "he" ? "he" : "en";
   const messages = getMessages(language);
   const E = messages.engine;
+  const router =
+    deps.search instanceof SearchRouter
+      ? deps.search
+      : deps.search && (!Array.isArray(deps.search) || deps.search.length > 0)
+        ? new SearchRouter(Array.isArray(deps.search) ? deps.search : [deps.search])
+        : null;
 
   const progress: StageLogEntry[] = [...job.progress];
   const usage: UsageRecord[] = [];
@@ -112,30 +122,35 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
   let conflicts: Array<{ key: string; description: string }> = [];
   let insufficient: string[] = [];
   let profileGenerated = false;
+  let retrievalStats: { retrieved: number; notPermitted: number; failed: number } | null = null;
+  let profileUrlState: SourceCategoryStatus["state"] | null = null;
 
-  const runQueries = async (queries: string[], input: ResearchInput, stage: ResearchStage) => {
+  const runQueries = async (queries: PlannedQuery[], input: ResearchInput, stage: ResearchStage) => {
     const results: SearchResult[] = [];
     const errors: ProviderError[] = [];
-    for (const q of queries) {
+    for (const { query: q, category } of queries) {
       if (signal.aborted) break;
+      // A category can become unavailable mid-run (e.g. its only provider rejected the key).
+      if (router!.available(category).length === 0) continue;
       try {
-        const hits = await deps.search!.search(q, { count: limits.resultsPerQuery, signal });
+        const { hits, provider } = await router!.search(q, category, { count: limits.resultsPerQuery, signal });
         queriesRun++;
-        track({ kind: "search_query", provider: deps.search!.id, units: 1 });
+        track({ kind: "search_query", provider: provider.id, units: 1 });
         results.push(
-          ...normalizeHits(hits, deps.search!.id, q, { fullName: input.fullName, company: input.company, profileUrl: input.profileUrl }, now()),
+          ...normalizeHits(hits, provider.id, q, { fullName: input.fullName, company: input.company, profileUrl: input.profileUrl }, now()).map((r) =>
+            category === "news" && r.sourceType === "web_page" ? { ...r, sourceType: "news" as const } : r,
+          ),
         );
       } catch (err) {
         queriesFailed++;
-        const pe = err instanceof ProviderError ? err : new ProviderError(deps.search!.label, "unknown", "Search failed");
+        const pe = err instanceof ProviderError ? err : new ProviderError("Search", "unknown", "Search failed");
         errors.push(pe);
         await log(stage, "warning", E.queryFailed(pe.toUserMessage(E.provider)));
-        // Credentials/quota errors will not recover within this job.
-        if (pe.code === "unauthorized" || pe.code === "quota_exceeded") break;
       }
     }
     return { results, errors };
   };
+  const webQueries = (queries: string[]): PlannedQuery[] => queries.map((query) => ({ query, category: "web" }));
 
   const toNewSource = (r: SearchResult): NewSource => ({
     url: r.url,
@@ -160,7 +175,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
     const parsed = researchInputSchema.safeParse(project.input);
     if (!parsed.success) throw new StageFailure("input_validation", "invalid_input", E.invalidInput);
     const input = parsed.data;
-    if (!deps.search) {
+    if (!router) {
       unavailableProviders.add("web_search");
       throw new StageFailure(
         "input_validation",
@@ -172,21 +187,75 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
     if (!deps.content) unavailableProviders.add("page_retrieval");
     await log("input_validation", "done", E.inputValidated);
 
-    const plan = buildQueryPlan(input, limits.maxQueriesPerJob);
+    const plan = buildQueryPlan(input, limits.maxQueriesPerJob, undefined, { news: router.supports("news") });
 
     // ---------------------------------------------------------------- Stage 2
     if (!identity.selected) {
+      // A public profile URL supplied by the user is retrieved directly (when the site
+      // permits it) and shown to identity resolution as the strongest identifying source.
+      let profileSource: SourceRecord | null = null;
+      if (input.profileUrl) {
+        const normalized = normalizeUrl(input.profileUrl);
+        const domain = domainOf(input.profileUrl);
+        if (!deps.content || limits.maxPageFetchesPerJob === 0) {
+          profileUrlState = "not_configured";
+        } else if (!normalized || isAutomatedRetrievalRestricted(domain)) {
+          profileUrlState = "not_available";
+          await log("identity_discovery", "warning", E.profileRestricted);
+        } else {
+          await log("identity_discovery", "running", E.checkingProfile);
+          try {
+            const page = await deps.content.retrieve(input.profileUrl, signal);
+            track({ kind: "page_fetch", provider: "web", units: 1 });
+            const title = (page.title ?? domain).slice(0, 500);
+            const [stored] = await store.upsertSources(project.id, jobId, [
+              {
+                url: input.profileUrl,
+                normalizedUrl: normalized,
+                title,
+                domain,
+                sourceType: classifySource(input.profileUrl, title, { fullName: input.fullName, company: input.company, profileUrl: input.profileUrl }),
+                author: page.author,
+                publishedAt: page.publishedAt,
+                accessedAt: now().toISOString(),
+                excerpt: page.description,
+                contentText: page.text,
+                retrievalStatus: "retrieved",
+                retrievalNote: page.truncated ? E.longPage : null,
+                relevance: "unassessed",
+                provider: "user_profile_url",
+                metadata: { suppliedByUser: true },
+              },
+            ]);
+            if (stored && stored.retrievalStatus !== "retrieved") {
+              // The URL was already saved from search results (snippet only): attach the retrieved page.
+              const patch: Partial<NewSource> = { contentText: page.text, retrievalStatus: "retrieved", retrievalNote: null, accessedAt: now().toISOString() };
+              await store.updateSource(stored.id, patch);
+              Object.assign(stored, patch);
+            }
+            profileSource = stored ?? null;
+            profileUrlState = "searched";
+            await log("identity_discovery", "done", E.profileRetrieved);
+          } catch (err) {
+            const pe = err instanceof ProviderError ? err : new ProviderError("Page retrieval", "unknown", "Retrieval failed");
+            profileUrlState = pe.code === "not_permitted" || pe.code === "blocked" ? "not_available" : "failed";
+            await log("identity_discovery", "warning", E.profileFailed(pe.toUserMessage(E.provider)));
+          }
+        }
+      }
+
       await log("identity_discovery", "running", E.identitySearches(plan.identity.length));
-      const { results, errors } = await runQueries(plan.identity, input, "identity_discovery");
-      if (results.length === 0 && errors.length > 0) {
+      const { results, errors } = await runQueries(webQueries(plan.identity), input, "identity_discovery");
+      if (results.length === 0 && errors.length > 0 && !profileSource) {
         throw new StageFailure("identity_discovery", errors[0].code, E.searchFailed(errors[0].toUserMessage(E.provider)));
       }
-      if (results.length === 0) {
+      if (results.length === 0 && !profileSource) {
         await flushUsage();
         throw new StageFailure("identity_discovery", "no_results", E.noResults);
       }
       const { results: deduped } = dedupeResults(results, limits.maxSourcesPerJob);
-      const stored = await store.upsertSources(project.id, jobId, deduped.map(toNewSource));
+      const searched = await store.upsertSources(project.id, jobId, deduped.map(toNewSource));
+      const stored = profileSource ? [profileSource, ...searched.filter((s) => s.id !== profileSource.id)] : searched;
       checkTime("identity_discovery");
       let outcome;
       if (deps.model) {
@@ -240,9 +309,20 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
     // When the user gave no company/role, anchor queries on the confirmed candidate's first attribute.
     const selectedCandidate = identity.candidates?.find((c) => c.id === selected.candidateId);
     const disambiguator = input.company || input.role ? undefined : selectedCandidate?.attributes[0];
-    const sourceQueries = buildQueryPlan(input, limits.maxQueriesPerJob, disambiguator).sources;
-    await log("source_search", "running", E.targetedSearches(sourceQueries.length));
-    const { results: sourceResults, errors: searchErrors } = await runQueries(sourceQueries, input, "source_search");
+    const sourceQueries = buildQueryPlan(input, limits.maxQueriesPerJob, disambiguator, { news: router.supports("news") }).sources;
+    const webPlanned = sourceQueries.filter((q) => q.category === "web");
+    const newsPlanned = sourceQueries.filter((q) => q.category === "news");
+    await log("source_search", "running", E.searchingWeb(webPlanned.length));
+    const web = await runQueries(webPlanned, input, "source_search");
+    let news = { results: [] as SearchResult[], errors: [] as ProviderError[] };
+    if (newsPlanned.length) {
+      await log("source_search", "running", E.searchingNews(newsPlanned.length));
+      news = await runQueries(newsPlanned, input, "source_search");
+    }
+    const sourceResults = [...web.results, ...news.results];
+    const searchErrors = [...web.errors, ...news.errors];
+    // A whole category that could not be searched makes the report partial, with the reason stated.
+    if (newsPlanned.length && news.results.length === 0 && news.errors.length >= newsPlanned.length) warnings.push(E.categoryFailed(E.categoryNames.news));
     if (searchErrors.length > 0 && sourceResults.length === 0) {
       warnings.push(E.targetedFailed);
     }
@@ -325,6 +405,7 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
           else notPermitted++;
         }
       }
+      retrievalStats = { retrieved, notPermitted, failed };
       await log(
         "source_retrieval",
         failed > 0 ? "warning" : "done",
@@ -333,6 +414,28 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
     }
     await flushUsage();
     sources = await store.listSources(project.id);
+
+    // Syndicated copies (the same article republished on several sites) are found by
+    // comparing retrieved text, and grouped so they count as one source.
+    const CRED_RANK = { primary: 0, established_publication: 1, secondary: 2, user_generated: 3, unknown: 4 } as const;
+    const copies = detectSyndication(
+      sources
+        .filter((s) => s.relevance !== "unrelated")
+        .map((s) => ({
+          id: s.id,
+          domain: s.domain,
+          publishedAt: s.publishedAt,
+          credibilityRank: CRED_RANK[sourceCredibility(s.sourceType, s.domain)],
+          text: s.contentText ?? "",
+        })),
+    );
+    for (const c of copies) {
+      const s = sources.find((x) => x.id === c.sourceId)!;
+      const metadata = { ...s.metadata, syndicationOf: c.originalId, independenceKey: c.independenceKey };
+      await store.updateSource(s.id, { metadata });
+      s.metadata = metadata;
+    }
+    if (copies.length) await log("deduplication", "done", E.syndicated(copies.length));
 
     // ---------------------------------------------------------------- Stages 6–8
     checkTime("fact_extraction");
@@ -417,6 +520,16 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
     checkTime("save_and_quality");
     await log("meeting_brief", "skipped", E.briefsOnRequest);
     const finalSources = await store.listSources(project.id);
+    if (!profileUrlState && input.profileUrl) {
+      // Resumed after the identity choice: derive what happened from the saved sources.
+      profileUrlState = finalSources.some((s) => s.provider === "user_profile_url")
+        ? "searched"
+        : isAutomatedRetrievalRestricted(domainOf(input.profileUrl))
+          ? "not_available"
+          : !deps.content
+            ? "not_configured"
+            : "failed";
+    }
     const quality = buildQualityReport({
       sources: finalSources,
       claims,
@@ -430,6 +543,14 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
       profileGenerated,
       messages: E,
       sectionLabels: messages.sectionLabels,
+      providers: router.report(),
+      categories: categoryStatuses({
+        router,
+        sources: finalSources,
+        contentConfigured: Boolean(deps.content) && limits.maxPageFetchesPerJob > 0,
+        retrieval: retrievalStats,
+        profileUrlState,
+      }),
     });
     const status = profileGenerated && warnings.length === 0 ? "completed" : "partial";
     await log("save_and_quality", status === "completed" ? "done" : "warning", status === "completed" ? E.complete : E.partial);
@@ -457,6 +578,52 @@ export async function runResearchJob(jobId: string, deps: PipelineDeps): Promise
     await store.audit("research.failed", { projectId: project.id, jobId, code: failure.code });
     return store.getJob(jobId);
   }
+}
+
+/**
+ * Per-category coverage for the report: what was really searched, how many
+ * results came back, and which categories have no integration in this version.
+ */
+export function categoryStatuses(args: {
+  router: SearchRouter;
+  sources: SourceRecord[];
+  contentConfigured: boolean;
+  retrieval: { retrieved: number; notPermitted: number; failed: number } | null;
+  profileUrlState: SourceCategoryStatus["state"] | null;
+}): SourceCategoryStatus[] {
+  const reports = args.router.report();
+  const searchState = (category: "web" | "news"): SourceCategoryStatus => {
+    if (!args.router.supports(category)) return { category, state: "not_configured" };
+    const rows = reports.filter((r) => r.category === category);
+    const queries = rows.reduce((n, r) => n + r.queries, 0);
+    if (queries === 0) return { category, state: "skipped" };
+    const succeeded = rows.reduce((n, r) => n + r.succeeded, 0);
+    const failed = rows.reduce((n, r) => n + r.failed, 0);
+    return {
+      category,
+      state: succeeded === 0 ? "failed" : failed > 0 ? "partial" : "searched",
+      count: rows.reduce((n, r) => n + r.results, 0),
+      providers: [...new Set(rows.filter((r) => r.succeeded > 0).map((r) => r.label))],
+    };
+  };
+  const relevant = args.sources.filter((s) => s.relevance !== "unrelated");
+  const found = (...types: SourceRecord["sourceType"][]) => relevant.filter((s) => types.includes(s.sourceType)).length;
+  const r = args.retrieval;
+  return [
+    searchState("web"),
+    searchState("news"),
+    { category: "profile", state: args.profileUrlState ?? "skipped" },
+    !args.contentConfigured
+      ? { category: "page_retrieval", state: "not_configured" }
+      : !r
+        ? { category: "page_retrieval", state: "skipped" }
+        : { category: "page_retrieval", state: r.retrieved === 0 && r.failed > 0 ? "failed" : r.failed > 0 ? "partial" : "searched", count: r.retrieved },
+    // No dedicated integrations yet: pages of these kinds are included only when web search returns them.
+    { category: "video", state: "not_available", count: found("video") },
+    { category: "podcast", state: "not_available", count: found("podcast") },
+    { category: "social", state: "not_available", count: found("social_media", "professional_network") },
+    { category: "forums", state: "not_available" },
+  ];
 }
 
 export type { ProjectRow };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runResearchJob, type PipelineDeps } from "@/lib/research/pipeline";
-import { ProviderError } from "@/lib/research/types";
+import { ProviderError, type SearchCategory, type SearchHit, type SearchOptions, type SearchProvider } from "@/lib/research/types";
 import type { ResearchInput } from "@/lib/validation/schemas";
 import { FakeContent, FakeModel, FakeSearch, testLimits } from "../helpers/fakes";
 import { MemoryStore } from "../helpers/memory-store";
@@ -187,6 +187,33 @@ function makeDeps(store: MemoryStore, overrides: Partial<PipelineDeps> = {}): Pi
     ...overrides,
   };
 }
+
+/** Mocked provider with web and news categories (deterministic; no live API). */
+class CategorySearch implements SearchProvider {
+  readonly categories: readonly SearchCategory[] = ["web", "news"];
+  calls: Array<{ query: string; category: SearchCategory }> = [];
+  constructor(
+    readonly id: string,
+    private readonly reply: (category: SearchCategory) => SearchHit[] | ProviderError,
+  ) {}
+  get label() {
+    return `Provider ${this.id}`;
+  }
+  async search(query: string, opts: SearchOptions): Promise<SearchHit[]> {
+    const category = opts.category ?? "web";
+    this.calls.push({ query, category });
+    const r = this.reply(category);
+    if (r instanceof ProviderError) throw r;
+    return r;
+  }
+}
+
+const NEWS_HIT: SearchHit = {
+  url: "https://newswire.example/2026/northwind-data-governance",
+  title: "Northwind Analytics expands data governance team",
+  snippet: "Chief Data Officer Maya Brenner said the team will double this year.",
+  publishedAt: "2026-09-01T08:00:00Z",
+};
 
 describe("research pipeline", () => {
   it("runs end to end and produces an evidence-linked profile", async () => {
@@ -435,5 +462,159 @@ describe("research pipeline", () => {
     const result = await runResearchJob(job.id, makeDeps(store, { limits: { ...testLimits, maxAiCallsPerJob: 1 } }));
     expect(result?.status).not.toBe("completed");
     expect(result?.usage.aiCalls).toBe(1);
+  });
+
+  it("searches news through a news-capable provider and reports coverage by category", async () => {
+    const store = new MemoryStore();
+    const { project, job } = store.seed(input);
+    const provider = new CategorySearch("multi", (c) => (c === "news" ? [NEWS_HIT] : SEARCH_HITS));
+    const result = await runResearchJob(job.id, makeDeps(store, { search: provider }));
+    expect(result?.status).toBe("completed");
+    expect(provider.calls.some((c) => c.category === "news")).toBe(true);
+    const news = (await store.listSources(project.id)).find((s) => s.url === NEWS_HIT.url);
+    expect(news?.sourceType).toBe("news");
+    const cats = Object.fromEntries((result?.qualityReport?.categories ?? []).map((c) => [c.category, c]));
+    expect(cats.web).toMatchObject({ state: "searched" });
+    expect(cats.news).toMatchObject({ state: "searched", count: 1, providers: ["Provider multi"] });
+    expect(["searched", "partial"]).toContain(cats.page_retrieval.state);
+    expect(cats.page_retrieval.count).toBeGreaterThan(0);
+    expect(cats.video.state).toBe("not_available");
+    expect(result?.qualityReport?.providers?.find((p) => p.category === "news")).toMatchObject({ queries: 1, succeeded: 1, results: 1 });
+    expect(result?.progress.some((p) => p.message.startsWith("Collecting news and articles"))).toBe(true);
+  });
+
+  it("marks news as not configured when no provider supports it, without failing", async () => {
+    const store = new MemoryStore();
+    const { job } = store.seed(input);
+    const result = await runResearchJob(job.id, makeDeps(store));
+    expect(result?.status).toBe("completed");
+    const news = result?.qualityReport?.categories?.find((c) => c.category === "news");
+    expect(news?.state).toBe("not_configured");
+  });
+
+  it("returns a partial report, with the reason, when a whole category fails", async () => {
+    const store = new MemoryStore();
+    const { job } = store.seed(input);
+    const provider = new CategorySearch("multi", (c) => (c === "news" ? new ProviderError("Provider multi", "rate_limited", "429", true) : SEARCH_HITS));
+    const result = await runResearchJob(job.id, makeDeps(store, { search: provider }));
+    expect(result?.status).toBe("partial");
+    expect(result?.qualityReport?.limitations.some((l) => l.includes("News search could not be searched"))).toBe(true);
+    expect(result?.qualityReport?.categories?.find((c) => c.category === "news")?.state).toBe("failed");
+    expect(result?.qualityReport?.claimsExtracted).toBeGreaterThan(0);
+  });
+
+  it("fails over to a secondary provider when the primary rejects its key", async () => {
+    const store = new MemoryStore();
+    const { job } = store.seed(input);
+    const primary = new CategorySearch("primary", () => new ProviderError("Provider primary", "unauthorized", "401"));
+    const secondary = new CategorySearch("secondary", (c) => (c === "news" ? [NEWS_HIT] : SEARCH_HITS));
+    const result = await runResearchJob(job.id, makeDeps(store, { search: [primary, secondary] }));
+    expect(result?.status).toBe("completed");
+    expect(primary.calls).toHaveLength(1); // disabled after the first rejection
+    const reports = result?.qualityReport?.providers ?? [];
+    expect(reports.find((r) => r.provider === "primary")).toMatchObject({ disabled: true, errors: { unauthorized: 1 } });
+    expect(reports.filter((r) => r.provider === "secondary").reduce((n, r) => n + r.succeeded, 0)).toBeGreaterThan(0);
+  });
+
+  it("does not count a syndicated copy of an article as independent corroboration", async () => {
+    const store = new MemoryStore();
+    const { project, job } = store.seed(input);
+    const copyUrl = "https://regional-business.example/2026/northwind-names-cdo";
+    const copyHit: SearchHit = { url: copyUrl, title: "Northwind picks data chief", snippet: "Republished business news about Northwind Analytics.", publishedAt: null };
+    const originalText = (PAGES[URLS.news] as { text: string }).text;
+    const pages = { ...PAGES, [copyUrl]: { ...PAGES[URLS.news], finalUrl: copyUrl, text: `${originalText} ${originalText}` } };
+    const model = new FakeModel({
+      identity_resolution: identityResponder(),
+      claim_extraction: (req: { user: string }) => {
+        const news = refFor(req.user, "reuters");
+        const copy = refFor(req.user, "regional-business");
+        return {
+          source_assessments: [
+            { source_id: news, relevance: "about_person", reason: "News" },
+            { source_id: copy, relevance: "about_person", reason: "News copy" },
+          ],
+          claims: [
+            {
+              claim_text: "Maya Brenner previously worked at Contoso Retail.",
+              category: "past_role",
+              evidence_type: "secondary_report",
+              temporal_status: "historical",
+              as_of_date: null,
+              evidence: [
+                { source_id: news, excerpt: "previously worked at Contoso Retail", relationship: "supports", support_strength: "direct" },
+                { source_id: copy, excerpt: "previously worked at Contoso Retail", relationship: "supports", support_strength: "direct" },
+              ],
+              conflict_key: null,
+              limitations: null,
+            },
+          ],
+          conflicts: [],
+        };
+      },
+      profile_sections: profileResponder,
+    });
+    const result = await runResearchJob(job.id, makeDeps(store, { search: new FakeSearch(() => [...SEARCH_HITS, copyHit]), content: new FakeContent(pages), model }));
+    const copy = (await store.listSources(project.id)).find((s) => s.url === copyUrl)!;
+    const original = (await store.listSources(project.id)).find((s) => s.url === URLS.news)!;
+    expect(copy.metadata.syndicationOf).toBe(original.id);
+    const claim = [...store.claims.values()].find((c) => c.claimText.includes("Contoso Retail"))!;
+    expect(claim.evidence).toHaveLength(2); // both copies are still shown as evidence
+    expect(claim.verificationStatus).toBe("single_source"); // ...but they are not independent
+    expect(claim.confidenceLabel).not.toBe("high");
+    expect(result?.progress.some((p) => p.message.includes("same article"))).toBe(true);
+  });
+
+  it("retrieves the profile URL the user supplied and shows it to identity resolution", async () => {
+    const store = new MemoryStore();
+    const { project, job } = store.seed({ ...input, profileUrl: URLS.personal });
+    const deps = makeDeps(store);
+    const result = await runResearchJob(job.id, deps);
+    const prompts = (deps.model as FakeModel).requests.filter((r) => r.name === "identity_resolution").map((r) => r.user);
+    expect(result?.status).toBe("completed");
+    const profile = (await store.listSources(project.id)).find((s) => s.url === URLS.personal)!;
+    expect(profile.retrievalStatus).toBe("retrieved");
+    expect(profile.provider).toBe("user_profile_url");
+    expect(prompts[0]).toContain("mayabrenner.example");
+    expect(result?.qualityReport?.categories?.find((c) => c.category === "profile")?.state).toBe("searched");
+    expect(result?.progress.some((p) => p.message === "Checking the public profile you provided.")).toBe(true);
+  });
+
+  it("never fetches a supplied profile on a platform that restricts automated access", async () => {
+    const store = new MemoryStore();
+    const { job } = store.seed({ ...input, profileUrl: URLS.linkedin });
+    const deps = makeDeps(store);
+    const result = await runResearchJob(job.id, deps);
+    expect((deps.content as FakeContent).calls).not.toContain(URLS.linkedin);
+    expect(result?.progress.some((p) => p.message.startsWith("The profile page you provided is on a platform"))).toBe(true);
+    // No candidate is linked to the supplied profile's site, so the user is asked rather than guessed for.
+    expect(result?.status).toBe("needs_input");
+  });
+
+  it("continues when the supplied profile cannot be retrieved", async () => {
+    const store = new MemoryStore();
+    const { job } = store.seed({ ...input, profileUrl: "https://gone.example/me" });
+    const result = await runResearchJob(job.id, makeDeps(store));
+    expect(result?.status).toBe("needs_input"); // research continues to the identity choice; nothing crashed
+    expect(result?.progress.some((p) => p.message.startsWith("The profile page you provided could not be retrieved"))).toBe(true);
+    expect(result?.identity.candidates?.length).toBeGreaterThan(0);
+  });
+
+  it("keeps the profile retrieval status after pausing for the identity choice", async () => {
+    const store = new MemoryStore();
+    const { job } = store.seed({ ...input, profileUrl: URLS.linkedin });
+    const deps = makeDeps(store);
+    const paused = await runResearchJob(job.id, deps);
+    expect(paused?.status).toBe("needs_input");
+    const candidate = paused!.identity.candidates![0];
+    await store.updateJob(job.id, {
+      status: "queued",
+      identity: {
+        ...paused!.identity,
+        selected: { candidateId: candidate.id, label: candidate.label, description: candidate.description, confirmedBy: "user", sourceNormalizedUrls: candidate.sources.map((s) => s.normalizedUrl) },
+      },
+    });
+    const result = await runResearchJob(job.id, deps);
+    expect(result?.status).toBe("completed");
+    expect(result?.qualityReport?.categories?.find((c) => c.category === "profile")?.state).toBe("not_available");
   });
 });

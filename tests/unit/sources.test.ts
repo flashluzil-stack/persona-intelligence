@@ -6,6 +6,7 @@ import { normalizeHits } from "@/lib/providers/search";
 import { classifySource } from "@/lib/research/classify";
 import { dedupeResults } from "@/lib/research/dedupe";
 import { buildQueryPlan } from "@/lib/research/queries";
+import { detectSyndication } from "@/lib/research/dedupe";
 import { ProviderError } from "@/lib/research/types";
 import { normalizeUrl } from "@/lib/security/url";
 
@@ -102,7 +103,7 @@ describe("query planning", () => {
     const plan = buildQueryPlan({ fullName: "Maya Brenner" }, 4);
     expect(plan.identity).toEqual(['"Maya Brenner"']);
     expect(plan.identity.length + plan.sources.length).toBeLessThanOrEqual(4);
-    expect(plan.sources.every((q) => q.startsWith('"Maya Brenner"'))).toBe(true);
+    expect(plan.sources.every((q) => q.query.startsWith('"Maya Brenner"'))).toBe(true);
   });
   it("adds company, role and profile domain queries", () => {
     const plan = buildQueryPlan(
@@ -111,7 +112,7 @@ describe("query planning", () => {
     );
     expect(plan.identity).toContain('"Maya Brenner" "Northwind Analytics"');
     expect(plan.identity).toContain('"Maya Brenner" site:mayabrenner.com');
-    expect(plan.sources[0]).toContain('"Northwind Analytics"');
+    expect(plan.sources[0].query).toContain('"Northwind Analytics"');
   });
 });
 
@@ -201,5 +202,25 @@ describe("WebContentProvider permissions", () => {
     const page = await provider.retrieve("https://example.com/a");
     expect(page.title).toBe("T");
     expect(page.text).toContain("Real content here.");
+  });
+});
+
+describe("syndication detection (retrieved text)", () => {
+  const article =
+    "Northwind Analytics named Maya Brenner chief data officer on Monday, the company said in a statement. Brenner, who joined in 2022, previously worked at Contoso Retail and will oversee the data platform, governance and privacy engineering teams across the company's offices.";
+  const base = { publishedAt: null, credibilityRank: 2 };
+
+  it("groups copies of the same article on different sites under the earliest original", () => {
+    const copies = detectSyndication([
+      { ...base, id: "copy", domain: "aggregator.example", publishedAt: "2026-09-02", text: `${article} Republished with permission.` },
+      { ...base, id: "orig", domain: "newswire.example", publishedAt: "2026-09-01", text: article },
+      { ...base, id: "other", domain: "blog.example", text: "A completely different essay about data governance, privacy engineering practices and how teams organise their analytics platforms in large companies today and in the future." },
+    ]);
+    expect(copies).toEqual([{ sourceId: "copy", originalId: "orig", independenceKey: "newswire.example" }]);
+  });
+
+  it("ignores short texts and pages on the same site", () => {
+    expect(detectSyndication([{ ...base, id: "a", domain: "x.example", text: "short" }, { ...base, id: "b", domain: "y.example", text: "short" }])).toEqual([]);
+    expect(detectSyndication([{ ...base, id: "a", domain: "x.example", text: article }, { ...base, id: "b", domain: "x.example", text: article }])).toEqual([]);
   });
 });

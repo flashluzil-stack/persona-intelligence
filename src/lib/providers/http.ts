@@ -7,7 +7,7 @@ import { ProviderError } from "@/lib/research/types";
  */
 export async function withRetries<T>(
   fn: (signal: AbortSignal) => Promise<T>,
-  opts: { retries: number; timeoutMs: number; provider: string; signal?: AbortSignal; baseDelayMs?: number },
+  opts: { retries: number; timeoutMs: number; provider: string; signal?: AbortSignal; baseDelayMs?: number; onRetry?: () => void },
 ): Promise<T> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= opts.retries; attempt++) {
@@ -20,6 +20,7 @@ export async function withRetries<T>(
       lastError = toProviderError(err, opts.provider);
       const retryable = lastError instanceof ProviderError && lastError.retryable;
       if (!retryable || attempt === opts.retries) break;
+      opts.onRetry?.();
       const delay = (opts.baseDelayMs ?? 500) * 2 ** attempt;
       await new Promise((r) => setTimeout(r, delay));
     }

@@ -130,9 +130,17 @@ export class ProviderError extends Error {
   }
 }
 
+/** Search categories a provider can serve. Web is general search; news uses the provider's news index. */
+export const SEARCH_CATEGORIES = ["web", "news"] as const;
+export type SearchCategory = (typeof SEARCH_CATEGORIES)[number];
+
 export interface SearchOptions {
   count: number;
   signal?: AbortSignal;
+  /** Defaults to "web". */
+  category?: SearchCategory;
+  /** Called before each retry of a transient failure (for reporting). */
+  onRetry?: () => void;
 }
 
 /** Provider-shaped hit after validation, before normalization/classification. */
@@ -146,6 +154,8 @@ export interface SearchHit {
 export interface SearchProvider {
   readonly id: string;
   readonly label: string;
+  /** Categories this provider supports; providers without it serve "web" only. */
+  readonly categories?: readonly SearchCategory[];
   /** Returns validated hits. Throws ProviderError on failure. */
   search(query: string, options: SearchOptions): Promise<SearchHit[]>;
 }
@@ -170,4 +180,31 @@ export interface UsageRecord {
   units: number;
   inputTokens?: number;
   outputTokens?: number;
+}
+
+/** What happened with one search provider in one category during a research run. */
+export interface ProviderRunReport {
+  provider: string;
+  label: string;
+  category: SearchCategory;
+  queries: number;
+  succeeded: number;
+  failed: number;
+  results: number;
+  retries: number;
+  errors: Partial<Record<ProviderErrorCode, number>>;
+  /** Disabled for the rest of the run after a credentials or quota error. */
+  disabled: boolean;
+}
+
+export type SourceCategoryKey = "web" | "news" | "profile" | "page_retrieval" | "video" | "podcast" | "social" | "forums";
+export type SourceCategoryState = "searched" | "partial" | "failed" | "not_configured" | "not_available" | "skipped";
+
+/** Per-category coverage shown to the user: what was actually searched, and why not otherwise. */
+export interface SourceCategoryStatus {
+  category: SourceCategoryKey;
+  state: SourceCategoryState;
+  /** Search results or retrieved pages, depending on the category. */
+  count?: number;
+  providers?: string[];
 }

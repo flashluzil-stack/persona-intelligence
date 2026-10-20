@@ -47,6 +47,7 @@ export type ConfidenceLabel = "high" | "moderate" | "low" | "insufficient";
 export type VerificationStatus = "corroborated" | "single_source" | "conflicting" | "unverified";
 
 export interface EvidenceForAssessment {
+  /** Independence key: the source's domain, or its original's domain for a syndicated copy. */
   domain: string;
   credibility: SourceCredibility;
   strength: "direct" | "partial" | "indirect";
