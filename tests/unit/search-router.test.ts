@@ -160,3 +160,16 @@ describe("live provider diagnostics (logic, with mocked providers)", () => {
     process.env.OPERATOR_EMAILS = prev;
   });
 });
+
+describe("category coverage", () => {
+  it("never reports page retrieval as a full success when no page was retrieved", async () => {
+    const { categoryStatuses } = await import("@/lib/research/pipeline");
+    const router = new SearchRouter([new ScriptedProvider("a", ["web"], () => [])]);
+    const page = (retrieval: { retrieved: number; notPermitted: number; failed: number }) =>
+      categoryStatuses({ router, sources: [], contentConfigured: true, retrieval, profileUrlState: null }).find((c) => c.category === "page_retrieval");
+    expect(page({ retrieved: 0, notPermitted: 5, failed: 0 })).toMatchObject({ state: "partial", count: 0, notPermitted: 5 });
+    expect(page({ retrieved: 0, notPermitted: 0, failed: 2 })?.state).toBe("failed");
+    expect(page({ retrieved: 3, notPermitted: 1, failed: 1 })?.state).toBe("partial");
+    expect(page({ retrieved: 3, notPermitted: 2, failed: 0 })?.state).toBe("searched");
+  });
+});

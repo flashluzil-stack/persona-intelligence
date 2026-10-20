@@ -948,6 +948,7 @@ const en = {
     },
     results: (n: number) => `${n} result${n === 1 ? "" : "s"}`,
     pages: (n: number) => `${n} page${n === 1 ? "" : "s"} retrieved`,
+    notPermitted: (n: number) => `${n} not permitted by the site`,
     foundViaWeb: (n: number) => `${n} found through web search`,
     via: (names: string) => `via ${names}`,
     notes: {

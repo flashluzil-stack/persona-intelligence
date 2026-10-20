@@ -21,7 +21,10 @@ export function SourceCoverage({ categories, providers }: { categories: SourceCa
   const c = t.coverage;
 
   const detail = (s: SourceCategoryStatus): string | null => {
-    if (s.category === "page_retrieval") return s.state === "not_configured" ? c.notes.retrievalOff : s.count !== undefined ? c.pages(s.count) : null;
+    if (s.category === "page_retrieval") {
+      if (s.state === "not_configured") return c.notes.retrievalOff;
+      return [s.count !== undefined ? c.pages(s.count) : null, s.notPermitted ? c.notPermitted(s.notPermitted) : null].filter(Boolean).join(" · ") || null;
+    }
     if (s.category === "profile") {
       if (s.state === "skipped") return c.notes.noProfile;
       if (s.state === "not_available") return c.notes.profileRestricted;

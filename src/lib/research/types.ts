@@ -206,5 +206,7 @@ export interface SourceCategoryStatus {
   state: SourceCategoryState;
   /** Search results or retrieved pages, depending on the category. */
   count?: number;
+  /** Pages skipped because the site does not permit automated retrieval (page_retrieval only). */
+  notPermitted?: number;
   providers?: string[];
 }

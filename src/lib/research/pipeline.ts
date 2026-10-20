@@ -617,7 +617,13 @@ export function categoryStatuses(args: {
       ? { category: "page_retrieval", state: "not_configured" }
       : !r
         ? { category: "page_retrieval", state: "skipped" }
-        : { category: "page_retrieval", state: r.retrieved === 0 && r.failed > 0 ? "failed" : r.failed > 0 ? "partial" : "searched", count: r.retrieved },
+        : {
+            category: "page_retrieval",
+            // Zero pages retrieved is never shown as a full success, even when sites simply did not permit retrieval.
+            state: r.retrieved === 0 ? (r.failed > 0 ? "failed" : "partial") : r.failed > 0 ? "partial" : "searched",
+            count: r.retrieved,
+            notPermitted: r.notPermitted,
+          },
     // No dedicated integrations yet: pages of these kinds are included only when web search returns them.
     { category: "video", state: "not_available", count: found("video") },
     { category: "podcast", state: "not_available", count: found("podcast") },
