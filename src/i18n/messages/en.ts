@@ -136,6 +136,8 @@ const en = {
     identityIllustrative: "Identity: illustrative",
     lastResearched: (date: string) => `Last researched ${date}`,
     viewBrief: "View the sample meeting brief",
+    printPreview: "Print preview of the sample report",
+    backToSample: "← Back to the sample report",
     briefNoticeBody: "This brief describes an invented person and shows the structure of a business partnership brief.",
     partnershipObjective: "Business partnership",
     sampleContentNote: "Sample report content is shown in English.",
@@ -644,6 +646,9 @@ const en = {
   },
   report: {
     back: "← Back to report",
+    printPreview: "Print preview",
+    previewHint: "This is how the report looks on paper. Tap “Print / save as PDF” to open your device's print dialog, where you can also save it as a PDF.",
+    sampleEyebrow: "Fictional sample · Research report",
     includeNotes: "Include my private notes",
     excludeNotes: "Exclude my private notes",
     eyebrow: "Persona Intelligence · Research report",

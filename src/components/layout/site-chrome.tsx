@@ -23,7 +23,7 @@ export async function PublicHeader() {
   const [auth, { t }] = await Promise.all([getAuth().catch(() => null), getI18n()]);
   const signedIn = auth && !auth.user.is_anonymous;
   return (
-    <header className="border-b border-line bg-paper/90 backdrop-blur">
+    <header className="no-print border-b border-line bg-paper/90 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-4 sm:px-5">
         <Logo />
         <nav aria-label={t.nav.main} className="flex items-center gap-1 sm:gap-2">

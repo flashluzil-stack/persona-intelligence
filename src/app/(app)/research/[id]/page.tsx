@@ -135,9 +135,14 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
           {full && <ProfileSearchBox base={base} defaultValue={q} />}
           <div className="flex flex-wrap gap-2 sm:justify-end">
             {full ? (
-              <LinkButton href={`${base}/meeting`} size="sm" variant="primary">
-                <Sparkles aria-hidden /> {t.project.meetingPrep}
-              </LinkButton>
+              <>
+                <LinkButton href={`${base}/meeting`} size="sm" variant="primary">
+                  <Sparkles aria-hidden /> {t.project.meetingPrep}
+                </LinkButton>
+                <LinkButton href={`${base}/report`} size="sm" variant="secondary">
+                  <Printer aria-hidden /> {t.report.printPreview}
+                </LinkButton>
+              </>
             ) : (
               <LinkButton href={unlockHref} size="sm" variant="accent">
                 <Lock aria-hidden /> {t.paywall.unlockCta}

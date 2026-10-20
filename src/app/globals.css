@@ -133,6 +133,15 @@ a {
     color: #555;
     word-break: break-all;
   }
+  /* Keep small blocks whole; let long sections flow across pages. */
+  article li,
+  article .rounded-md {
+    break-inside: avoid;
+  }
+  h2,
+  h3 {
+    break-after: avoid;
+  }
   @page {
     margin: 18mm 16mm;
   }

@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
+import { Printer } from "lucide-react";
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/site-chrome";
 import { ProfileSearchBox, ProfileTabContent, ProfileTabs } from "@/components/profile/profile-view";
+import { LinkButton } from "@/components/ui/button";
 import { Badge, Notice } from "@/components/ui/primitives";
 import { formatDate } from "@/i18n/format";
 import { getI18n } from "@/i18n/server";
@@ -41,6 +43,9 @@ export default async function DemoPage({ searchParams }: PageProps<"/demo">) {
               {t.demo.viewBrief}
             </Link>
           </p>
+          <LinkButton href="/demo/report" size="sm" variant="secondary" className="no-print">
+            <Printer aria-hidden /> {t.report.printPreview}
+          </LinkButton>
         </div>
         <ProfileSearchBox base="/demo" defaultValue={q} />
       </header>

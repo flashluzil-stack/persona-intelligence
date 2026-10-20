@@ -134,6 +134,8 @@ const he: Messages = {
     identityIllustrative: "זהות: להמחשה",
     lastResearched: (date) => `נחקר לאחרונה ${date}`,
     viewBrief: "לתדריך הפגישה לדוגמה",
+    printPreview: "תצוגת הדפסה של הדוח לדוגמה",
+    backToSample: "→ חזרה לדוח לדוגמה",
     briefNoticeBody: "התדריך מתאר אדם בדוי ומציג את המבנה של תדריך לשותפות עסקית.",
     partnershipObjective: "שותפות עסקית",
     sampleContentNote: "תוכן הדוח לדוגמה מוצג באנגלית.",
@@ -639,6 +641,9 @@ const he: Messages = {
   },
   report: {
     back: "→ חזרה לדוח",
+    printPreview: "תצוגת הדפסה",
+    previewHint: "כך ייראה הדוח על נייר. כפתור ההדפסה פותח את חלון ההדפסה של המכשיר, ושם אפשר גם לשמור את הדוח כקובץ PDF.",
+    sampleEyebrow: "דוגמה בדויה · דוח מחקר",
     includeNotes: "הכללת ההערות הפרטיות שלי",
     excludeNotes: "הסתרת ההערות הפרטיות שלי",
     eyebrow: "Persona Intelligence · דוח מחקר",
