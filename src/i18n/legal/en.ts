@@ -146,7 +146,7 @@ export const termsEn: LegalDoc = {
       title: "Failed payments and research failures",
       items: [
         "If a payment fails, nothing is charged or unlocked; you can try again. If a subscription renewal fails, Paddle retries the payment and your plan is shown as “payment failed” in the meantime.",
-        "Credits are only used on completed reports. If research fails before a report is produced, no credit or subscription allowance is used.",
+        "You are only charged for reports that contain at least one verified finding. If research fails, or finds nothing that can be verified, no payment, credit or subscription allowance is used, and the attempt does not count toward your free previews.",
       ],
     },
     {

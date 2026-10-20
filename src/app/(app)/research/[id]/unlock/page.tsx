@@ -7,6 +7,7 @@ import { getI18n } from "@/i18n/server";
 import { requireAuth } from "@/lib/auth";
 import { getEntitlements, getReportAccess } from "@/lib/billing/entitlements";
 import { getOffers } from "@/lib/billing/offers";
+import { isReportBillable } from "@/lib/billing/readiness";
 import { getAccessConfig, getPublicConfig } from "@/lib/config";
 import { uuidSchema } from "@/lib/validation/schemas";
 
@@ -25,10 +26,7 @@ export default async function UnlockPage({ params }: PageProps<"/research/[id]/u
   const access = await getReportAccess(supabase, id);
   if (access.full) redirect(`/research/${id}?tab=overview`);
 
-  const [{ data: overview }, entitlements] = await Promise.all([
-    supabase.from("profile_sections").select("id").eq("research_project_id", id).eq("section_type", "overview").eq("is_current", true).maybeSingle(),
-    getEntitlements(supabase),
-  ]);
+  const [billable, entitlements] = await Promise.all([isReportBillable(supabase, id), getEntitlements(supabase)]);
   const cfg = getPublicConfig();
   const { offers, annualSavings } = getOffers(locale, cfg.paymentsConfigured);
   const name = (project.input as { fullName?: string }).fullName ?? "";
@@ -48,7 +46,7 @@ export default async function UnlockPage({ params }: PageProps<"/research/[id]/u
       </div>
       <UnlockOptions
         projectId={id}
-        ready={Boolean(overview)}
+        ready={billable}
         guest={Boolean(user.is_anonymous)}
         paymentsEnabled={cfg.paymentsConfigured}
         credits={entitlements.credits}

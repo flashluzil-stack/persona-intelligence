@@ -32,12 +32,19 @@ async function user(anonymous = false) {
   return id;
 }
 
-async function project(userId: string, ready = true) {
+/** ready: overview + one verified claim; "empty": an overview but no verified findings; false: nothing yet. */
+async function project(userId: string, ready: boolean | "empty" = true) {
   const { rows } = await admin.query("insert into public.research_projects (user_id, name, input) values ($1, 'P', '{}') returning id", [userId]);
   const id = rows[0].id as string;
   if (ready) {
     await admin.query(
       "insert into public.profile_sections (user_id, research_project_id, section_type, structured_content) values ($1, $2, 'overview', '{}')",
+      [userId, id],
+    );
+  }
+  if (ready === true) {
+    await admin.query(
+      "insert into public.claims (user_id, research_project_id, claim_text, category, evidence_type, confidence_label, confidence_rationale, verification_status) values ($1, $2, 'A verified finding.', 'current_role', 'documented_fact', 'moderate', 'Test', 'single_source')",
       [userId, id],
     );
   }
@@ -157,6 +164,17 @@ d("billing and entitlements", () => {
     expect(outcomes.filter((o) => o === "unlocked")).toHaveLength(1);
     expect(outcomes.filter((o) => o === "already_unlocked")).toHaveLength(3);
     expect(await balance(u)).toBe(0);
+  });
+
+  it("never charges for an empty report (overview but no verified findings)", async () => {
+    const u = await user();
+    const empty = await project(u, "empty");
+    await admin.query("insert into public.credit_ledger (user_id, delta, reason, idempotency_key) values ($1, 3, 'adjustment', $2)", [u, `grant:${randomUUID()}`]);
+    const credits = await svc<{ r: string }>("select public.billing_unlock_with_credits($1, $2, 1) as r", [u, empty]);
+    expect(credits.rows[0].r).toBe("not_ready");
+    expect(await balance(u)).toBe(3); // nothing deducted
+    const ready = await svc<{ r: boolean }>("select public.billing_report_ready($1) as r", [empty]);
+    expect(ready.rows[0].r).toBe(false);
   });
 
   it("refuses to spend credits without balance, on unready reports, or on others' reports", async () => {

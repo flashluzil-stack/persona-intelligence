@@ -4,6 +4,7 @@ import { z } from "zod";
 import { guard, jsonError, readJson } from "@/lib/api";
 import { getCatalog, PRODUCT_KEYS } from "@/lib/billing/catalog";
 import { PaddleClient } from "@/lib/billing/paddle";
+import { isReportBillable } from "@/lib/billing/readiness";
 import { getPaddleConfig, getServiceRoleKey } from "@/lib/config";
 import { aiActionLimiter } from "@/lib/security/rate-limit";
 import { createServiceClient } from "@/lib/supabase/admin";
@@ -37,8 +38,7 @@ export async function POST(request: NextRequest) {
     if (!project) return jsonError(404, t.errors.notFound);
     const { data: unlocked } = await supabase.from("report_unlocks").select("research_project_id").eq("research_project_id", project.id).maybeSingle();
     if (unlocked) return jsonError(409, t.paywall.alreadyUnlocked, { code: "already_unlocked" });
-    const { data: ready } = await supabase.from("profile_sections").select("id").eq("research_project_id", project.id).eq("section_type", "overview").eq("is_current", true).maybeSingle();
-    if (!ready) return jsonError(409, t.paywall.notReady, { code: "not_ready" });
+    if (!(await isReportBillable(supabase, project.id))) return jsonError(409, t.paywall.notReady, { code: "not_ready" });
     projectId = project.id;
   }
 

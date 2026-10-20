@@ -779,7 +779,7 @@ const en = {
     signInRequired: "Create a free account or sign in to purchase. Your preview will be kept.",
     working: "Working…",
     unlocked: "Unlocked. Opening the full report…",
-    notReady: "This report is not finished yet. Wait for the research to complete before unlocking.",
+    notReady: "This report cannot be unlocked yet: the research is still running, or it found no verified findings. You are never charged for an empty report.",
     insufficientCredits: "You do not have enough credits.",
     fairUseLimit: "You have reached your plan's fair-use limit for this billing period.",
     noSubscription: "You do not have an active subscription.",

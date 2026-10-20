@@ -46,7 +46,8 @@ export interface QuotaStatus {
 
 /** Counts this user's reports that are still locked (preview only), optionally within a window. */
 async function lockedReportCount(db: SupabaseClient, sinceIso: string | null): Promise<number> {
-  let q = db.from("research_projects").select("id").limit(1000);
+  // Failed research (nothing usable produced) never uses up a free preview.
+  let q = db.from("research_projects").select("id").neq("status", "failed").limit(1000);
   if (sinceIso) q = q.gte("created_at", sinceIso);
   const { data: projects } = await q;
   const ids = (projects ?? []).map((p) => p.id as string);
