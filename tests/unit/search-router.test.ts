@@ -122,3 +122,41 @@ describe("SearchRouter", () => {
     expect(router.supports("news")).toBe(false);
   });
 });
+
+describe("live provider diagnostics (logic, with mocked providers)", () => {
+  it("checks every provider and category with neutral queries and reports failures", async () => {
+    const { runSearchChecks, DIAGNOSTIC_QUERIES } = await import("@/lib/research/diagnostics");
+    const good = new ScriptedProvider("good", ["web", "news"], () => [hit(1), hit(2)]);
+    const bad = new ScriptedProvider("bad", ["web"], () => new ProviderError("Bad", "unauthorized", "401"));
+    let t = 0;
+    const checks = await runSearchChecks([good, bad], () => (t += 5));
+    expect(checks).toEqual([
+      expect.objectContaining({ provider: "good", category: "web", ok: true, results: 2, error: null }),
+      expect.objectContaining({ provider: "good", category: "news", ok: true, results: 2 }),
+      expect.objectContaining({ provider: "bad", category: "web", ok: false, results: 0, error: "unauthorized" }),
+    ]);
+    // Queries never contain a person's name: they are fixed, neutral strings.
+    expect(good.calls.map((c) => c.query)).toEqual([DIAGNOSTIC_QUERIES.web, DIAGNOSTIC_QUERIES.news]);
+  });
+
+  it("reports page retrieval success, failure and disabled", async () => {
+    const { runRetrievalCheck } = await import("@/lib/research/diagnostics");
+    const ok = await runRetrievalCheck({ retrieve: async (url) => ({ finalUrl: url, title: null, description: null, author: null, publishedAt: null, text: "Example Domain", truncated: false }) });
+    expect(ok).toMatchObject({ ok: true, chars: 14, error: null });
+    const failed = await runRetrievalCheck({ retrieve: async () => Promise.reject(new ProviderError("Page retrieval", "not_permitted", "robots")) });
+    expect(failed).toMatchObject({ ok: false, error: "not_permitted" });
+    expect(await runRetrievalCheck(null)).toBeNull();
+  });
+
+  it("only allows configured operator emails", async () => {
+    const { isOperatorEmail } = await import("@/lib/config");
+    const prev = process.env.OPERATOR_EMAILS;
+    process.env.OPERATOR_EMAILS = " Owner@Example.com , ops@example.com";
+    expect(isOperatorEmail("owner@example.com")).toBe(true);
+    expect(isOperatorEmail("someone@example.com")).toBe(false);
+    expect(isOperatorEmail(null)).toBe(false);
+    process.env.OPERATOR_EMAILS = "";
+    expect(isOperatorEmail("owner@example.com")).toBe(false);
+    process.env.OPERATOR_EMAILS = prev;
+  });
+});

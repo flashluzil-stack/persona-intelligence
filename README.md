@@ -101,6 +101,14 @@ Tables: `user_settings`, `research_projects`, `persons`, `person_identifiers`, `
 - **AI:** set `OPENAI_API_KEY`. Outputs are validated with Zod. On invalid output the client retries once, sending the validation error back to the model. Prompts live in `src/lib/ai/prompts/`.
 - **Page retrieval** needs no key. It honours robots.txt, never fetches LinkedIn, X, Facebook, Instagram, TikTok, Glassdoor or Crunchbase, refuses `noai` pages, and never bypasses logins, paywalls or CAPTCHAs.
 
+## Search providers and coverage
+
+- Brave Search and Tavily are both supported, for **web** and **news** search. Configure one or both; with both, each query goes to the first provider in `SEARCH_PROVIDER` order and fails over to the other if it fails (no duplicate paid calls). A provider that rejects its key or runs out of quota is disabled for the rest of the run.
+- A public profile URL supplied by the user is retrieved directly (only where the site permits automated access) and used as the strongest identity source.
+- Each report records, per category, what was actually searched: web, news, the supplied profile, full-page retrieval, and the categories that have **no dedicated integration yet** (YouTube/video, podcasts, social media, forums: pages of those kinds appear only when web search finds them). Per-provider results, retries and errors are stored with the report.
+- Syndicated copies of the same article are detected from the retrieved text and count as **one** source for corroboration.
+- Operators listed in `OPERATOR_EMAILS` can run a live provider check from Settings (neutral queries, never a person's name).
+
 ## How research works
 
 1. Validate input → 2. identity search and candidate grouping (pause for the user's choice when ambiguous or when only a name was given) → 3. targeted searches (interviews, podcasts, publications, projects, talks, news) → 4. deduplicate (URL normalization and near-duplicate detection) → 5. retrieve permitted pages → 6. extract claims → 7. verify each excerpt verbatim against stored source text (unverifiable claims are discarded) → 8. conflict and date analysis (a “current” claim older than two years loses its current status) → 9–10. interest analysis and profile generation (sources and claims are referenced by ID, so the model cannot invent URLs) → 11. meeting brief on request → 12. save and build the quality report.

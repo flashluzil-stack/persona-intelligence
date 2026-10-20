@@ -145,6 +145,19 @@ export function getPublicConfig(): PublicConfig {
   };
 }
 
+/**
+ * Operators may run live provider diagnostics from Settings. Comma-separated
+ * email addresses in OPERATOR_EMAILS; empty means nobody.
+ */
+export function isOperatorEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const list = (process.env.OPERATOR_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(email.toLowerCase());
+}
+
 export function getAppUrl(): string {
   const env = process.env;
   // On Vercel, fall back to the project's production domain so auth email links work without extra config.

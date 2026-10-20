@@ -5,6 +5,7 @@ import { formatNumber } from "@/i18n/format";
 import { useI18n } from "@/i18n/provider";
 import type { QualityReport } from "@/lib/research/store";
 import type { SourceType } from "@/lib/research/types";
+import { SourceCoverage } from "./source-coverage";
 
 function Stat({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
@@ -17,7 +18,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 /** Research quality: counts and plain-language limitations — deliberately no single score. */
-export function QualitySummary({ quality }: { quality: QualityReport }) {
+export function QualitySummary({ quality, showCoverage = true }: { quality: QualityReport; showCoverage?: boolean }) {
   const { t, locale } = useI18n();
   const q = t.quality;
   const n = (v: number) => formatNumber(v, locale);
@@ -81,6 +82,12 @@ export function QualitySummary({ quality }: { quality: QualityReport }) {
           ))}
         </ul>
       </div>
+      {showCoverage && quality.categories && quality.categories.length > 0 && (
+        <div>
+          <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.1em] text-muted">{t.coverage.title}</p>
+          <SourceCoverage categories={quality.categories} providers={quality.providers ?? []} />
+        </div>
+      )}
     </div>
   );
 }

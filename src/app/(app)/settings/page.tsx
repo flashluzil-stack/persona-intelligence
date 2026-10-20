@@ -9,7 +9,8 @@ import { getI18n } from "@/i18n/server";
 import { requireAuth } from "@/lib/auth";
 import { getEnabledSocialProviders } from "@/lib/auth-providers";
 import { getEntitlements } from "@/lib/billing/entitlements";
-import { getPublicConfig, getResearchLimits } from "@/lib/config";
+import { getPublicConfig, getResearchLimits, isOperatorEmail } from "@/lib/config";
+import { ProviderDiagnostics } from "@/components/settings/provider-diagnostics";
 import { DeleteAccountForm, LanguagePreference, PreferencesForm, SubscriptionControls } from "./settings-forms";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -176,13 +177,19 @@ export default async function SettingsPage() {
       <Card>
         <CardHeader title={s.providersTitle} description={s.providersBody} />
         <ul className="divide-y divide-line">
-          <ProviderRow name={s.provider.search.name} configured={cfg.searchConfigured} env="SEARCH_PROVIDER + BRAVE_SEARCH_API_KEY / TAVILY_API_KEY" detail={s.provider.search.detail(cfg.searchProvider)} labels={rowLabels} />
+          <ProviderRow name={s.provider.search.name} configured={cfg.searchConfigured} env="SEARCH_PROVIDER + BRAVE_SEARCH_API_KEY / TAVILY_API_KEY" detail={s.provider.search.detail(cfg.searchProviders.length ? cfg.searchProviders.join(", ") : null)} labels={rowLabels} />
           <ProviderRow name={s.provider.ai.name} configured={cfg.analysisConfigured} env="OPENAI_API_KEY" detail={s.provider.ai.detail(cfg.analysisModel)} labels={rowLabels} />
           <ProviderRow name={s.provider.retrieval.name} configured={cfg.pageRetrievalEnabled} env="RESEARCH_DISABLE_PAGE_FETCH" detail={s.provider.retrieval.detail} labels={rowLabels} />
           <ProviderRow name={s.provider.payments.name} configured={cfg.paymentsConfigured} env="PADDLE_* + SUPABASE_SERVICE_ROLE_KEY" detail={s.provider.payments.detail} labels={rowLabels} />
           <ProviderRow name={s.provider.social.name} configured={social.length > 0} env="Supabase → Authentication → Providers" detail={s.provider.social.detail} labels={rowLabels} />
           <ProviderRow name={s.provider.visual.name} configured={cfg.imageAnalysisEnabled} env="—" detail={s.provider.visual.detail} labels={rowLabels} />
         </ul>
+        {isOperatorEmail(user.email) && (
+          <div className="border-t border-line p-5">
+            <h3 className="mb-1 text-[15px] font-semibold">{t.diagnostics.title}</h3>
+            <ProviderDiagnostics />
+          </div>
+        )}
       </Card>
 
       <Card>

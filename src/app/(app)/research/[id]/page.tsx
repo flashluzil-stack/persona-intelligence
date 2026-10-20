@@ -9,6 +9,7 @@ import { ProfileSearchBox, ProfileTabContent, ProfileTabs, ResearchDisclaimer } 
 import { IdentityChooser } from "@/components/research/identity-chooser";
 import { JobProgress } from "@/components/research/job-progress";
 import { QualitySummary } from "@/components/research/quality-summary";
+import { SourceCoverage } from "@/components/research/source-coverage";
 import { LinkButton } from "@/components/ui/button";
 import { Badge, Card, CardHeader, Notice } from "@/components/ui/primitives";
 import { formatDate, formatDateTime } from "@/i18n/format";
@@ -226,11 +227,19 @@ export default async function ResearchPage({ params, searchParams }: PageProps<"
                 </div>
               )}
             </Card>
+            {quality?.categories && quality.categories.length > 0 && (
+              <Card>
+                <CardHeader title={t.coverage.title} description={t.coverage.body} />
+                <div className="p-5">
+                  <SourceCoverage categories={quality.categories} providers={quality.providers ?? []} />
+                </div>
+              </Card>
+            )}
             {quality && full && (
               <Card>
                 <CardHeader title={t.sections.qualityTitle} />
                 <div className="p-5">
-                  <QualitySummary quality={quality} />
+                  <QualitySummary quality={quality} showCoverage={false} />
                 </div>
               </Card>
             )}
